@@ -17,31 +17,34 @@ import java.util.Optional;
  */
 public final class FingerprintService {
     /** Données à confier à l'émission : kid à enregistrer, bits à écrire dans F, engagement à signer dans W. */
-    public record EmissionFingerprint(String kid, boolean[] bits, byte[] fCommit) {}
+    public record EmissionFingerprint(int kid, boolean[] bits, byte[] fCommit) {}
 
-    private final String kid;
+    /** Kid du branchement générique (PRF de test, sans module crypto) : hors de [0, 65 535], jamais un vrai kid. */
+    public static final int NO_KID = -1;
+
+    private final int kid;
     private final TardosCodeGenerator generator;
     private final FingerprintEmbedder embedder;
     private final ColluderAnalyzer analyzer;
 
-    /** Branchement de production : K_F issue de CryptoService pour ce kid. */
-    public static FingerprintService forKid(CryptoService crypto, String kid) {
+    /** Branchement de production : K_F issue de CryptoService pour ce kid (entier sur 16 bits). */
+    public static FingerprintService forKid(CryptoService crypto, int kid) {
         return new FingerprintService(new CryptoPrf(crypto, kid), kid);
     }
 
     /** Branchement générique (tests unitaires avec {@link HmacSha256Prf}). */
     public FingerprintService(Prf prf) {
-        this(prf, "test");
+        this(prf, NO_KID);
     }
 
-    private FingerprintService(Prf prf, String kid) {
+    private FingerprintService(Prf prf, int kid) {
         this.kid = kid;
         this.generator = new TardosCodeGenerator(prf);
         this.embedder = new FingerprintEmbedder(prf);
         this.analyzer = new ColluderAnalyzer(generator);
     }
 
-    public String kid() { return kid; }
+    public int kid() { return kid; }
 
     /** CU07 étape 1 : générer le code du destinataire et l'engagement. */
     public EmissionFingerprint prepare(byte[] imageId, byte[] emissionId, String recipientId) {
@@ -52,7 +55,7 @@ public final class FingerprintService {
 
     /** CU07 étape 2 : insérer dans la partition F. Échec : exception, émission annulée. */
     public void embed(FPartition f, byte[] maskDigest, EmissionFingerprint fp) {
-        if (!fp.kid().equals(kid)) {
+        if (fp.kid() != kid) {
             throw new FingerprintException(FingerprintException.Code.INVALID_INPUT, "kid de l'émission différent du service");
         }
         embedder.embed(f, maskDigest, fp.bits());

@@ -79,31 +79,32 @@ mvn -B -pl medimage-fingerprint exec:java -Dexec.args="3000 target/reports"   # 
 
 - `CryptoPrf` (module fingerprint) adapte `CryptoService` : `hmac` → `kfHmac(kid)` ; `commit128` →
   `computeFCommit(kid, ...)`. L'engagement `fCommit` n'a donc qu'une implémentation, celle de crypto.
+- Le kid est un entier sur 16 bits (`tn.medimagetrust.crypto.Kid`), le même que dans W, S et les ancrages du journal.
 - `FingerprintService.forKid(crypto, kid)` crée un service lié à un kid. Le kid de l'émission doit être enregistré
   avec l'émission (registre SEC06) : pour analyser une ancienne copie après rotation, il faut recréer le service avec
   ce kid.
 
 ## Écarts connus avec la v2.4
 
-À traiter par les tâches suivantes ; aucun n'est corrigé ici.
+À traiter par les tâches suivantes.
 
 | Sujet | État actuel du code | Attendu par la v2.4 | Tâche |
 |---|---|---|---|
-| Jeton S : AAD | `CryptoService.encryptTokenS` utilise l'identifiant d'objet seul (`AesGcm.aadForObject`) | `MIT-S-v1 ‖ emissionId ‖ issuerId ‖ kid` (§8.2) | crypto |
-| Jeton S : clé | `K_tok` dérivée par kid (`MIT-KTOK-v1`), la même pour toutes les émissions | sous-clé HKDF par émission (§8.2, SEC-K04) | crypto |
-| Dérivation des clés | sous-clés dérivées d'un secret par kid fourni par `KeyProvider` (`InMemoryKeyProvider`) | K_tok, K_F, K_store et les graines Ed25519 de SK et K_log dérivées par HKDF de la **seule KEK**, stockée dans le credential store Elytron (§8.2, §8.6) | crypto |
-| Format du kid | `String` | entier sur 2 octets dans W, S et l'ancrage d'audit (§8.3) | crypto |
 | Fingerprint | LSB v2.3 : `FPartition` (rangs modulo 10, ≥ 6 144 pixels), 3 072 bits (1 024 symboles × 3) | `FBlockChannel` du module embedding : 128 blocs × 8 bits par QIM sur DCT, 1 bit par symbole (§4.1) | fingerprint |
 | CI | `.github/` hors du périmètre de cette tâche. `CODEOWNERS` est vide, `ci.yml` ne se déclenche qu'en push sur `feature/**` (pas `feat/*`, `fix/*`, `chore/*`), `cd.yml` appelle `scripts/deploy.sh`, absent du dépôt. Pas de banc d'attaques (JPEG Q75, redimensionnement) | pipeline complet (§9) | CI |
 
 Écarts propres au module embedding (bornage à 0, robustesse de F, SEC-M03 c) : voir
 `medimage-embedding/README.md`, section « Décisions à valider ».
 
+Corrigés dans le module crypto (branche `fix/crypto-v2.4`, voir `medimage-crypto/README.md`) : AAD et sous-clé par
+émission du jeton S, dérivation de toutes les clés depuis la seule KEK, kid sur 16 bits. Reste côté production :
+l'`ElytronKeyProvider` du module web.
+
 ## Points à trancher en équipe
 
 | Point | Décision | Source |
 |---|---|---|
 | Insertion | **Tranché** : DCT/QIM pour F, puis LSB pour S et W (implémenté dans `medimage-embedding`) | consigne du professeur, v2.4 §4.1 |
-| AAD du jeton S | **Tranché** : `MIT-S-v1 ‖ emissionId ‖ issuerId ‖ kid` ; reste à implémenter (écart ci-dessus) | v2.4 §8.2 |
+| AAD du jeton S | **Tranché et implémenté** : `MIT-S-v1 ‖ emissionId ‖ issuerId ‖ kid` (`CryptoService.sealTokenS`) | v2.4 §8.2 |
 | Format de W | **Tranché** : charge binaire fixe `MIT-W-v1` de 208 octets, `fCommit` aux octets 128 à 143, signature Ed25519 sur `MIT-W-v1 ‖ 0x00 ‖ octets 0 à 143` (le JSON canonique JCS n'est pas retenu pour W) | v2.4 §8.3 |
 | Rôles dans `ATTRIBUTION.md` | **Tranché** : corrigés selon la v2.4 (Nour watermarking, Nourhen fingerprinting, Amel stéganographie) | v2.4 §10.1 |

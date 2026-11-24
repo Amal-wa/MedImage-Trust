@@ -18,38 +18,38 @@ class KfHmacTest {
 
     private static CryptoService service() {
         InMemoryKeyProvider kp = new InMemoryKeyProvider();
-        kp.registerNewKeyVersion("kid-1");
+        kp.registerNewKek(1);
         return new CryptoService(kp);
     }
 
     @Test
     void kfHmacEstDeterministePourUnKid() {
         CryptoService cs = service();
-        UnaryOperator<byte[]> f = cs.kfHmac("kid-1");
+        UnaryOperator<byte[]> f = cs.kfHmac(1);
         assertArrayEquals(f.apply(b("m")), f.apply(b("m")));
-        assertArrayEquals(f.apply(b("m")), cs.kfHmac("kid-1").apply(b("m")));
+        assertArrayEquals(f.apply(b("m")), cs.kfHmac(1).apply(b("m")));
     }
 
     @Test
     void kfHmacDependDuKidEtDuMessage() {
         InMemoryKeyProvider kp = new InMemoryKeyProvider();
-        kp.registerNewKeyVersion("kid-1");
-        kp.registerNewKeyVersion("kid-2");
+        kp.registerNewKek(1);
+        kp.registerNewKek(2);
         CryptoService cs = new CryptoService(kp);
-        assertFalse(Arrays.equals(cs.kfHmac("kid-1").apply(b("m")), cs.kfHmac("kid-2").apply(b("m"))));
-        assertFalse(Arrays.equals(cs.kfHmac("kid-1").apply(b("m")), cs.kfHmac("kid-1").apply(b("n"))));
+        assertFalse(Arrays.equals(cs.kfHmac(1).apply(b("m")), cs.kfHmac(2).apply(b("m"))));
+        assertFalse(Arrays.equals(cs.kfHmac(1).apply(b("m")), cs.kfHmac(1).apply(b("n"))));
     }
 
     @Test
     void kfHmacEstCoherentAvecComputeFCommit() {
         CryptoService cs = service();
         byte[] msg = b("MIT-FC-v1|emission|destinataire");
-        byte[] viaPrf = Arrays.copyOf(cs.kfHmac("kid-1").apply(msg), 16);
-        assertArrayEquals(cs.computeFCommit("kid-1", msg), viaPrf);
+        byte[] viaPrf = Arrays.copyOf(cs.kfHmac(1).apply(msg), 16);
+        assertArrayEquals(cs.computeFCommit(1, msg), viaPrf);
     }
 
     @Test
     void kidInconnuEstRefuse() {
-        assertThrows(IllegalArgumentException.class, () -> service().kfHmac("inconnu"));
+        assertThrows(IllegalArgumentException.class, () -> service().kfHmac(42));
     }
 }
