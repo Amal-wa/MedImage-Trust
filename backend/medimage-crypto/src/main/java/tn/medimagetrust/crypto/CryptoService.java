@@ -34,6 +34,15 @@ public final class CryptoService {
         byte[] canonical = Jcs.canonicalize(rawJson);
         return Ed25519.verify(keyProvider.getSigningPublicKey(kid), canonical, signature);
     }
+    /** Signe une charge utile binaire avec préfixe de domaine (ex. MIT-W-v1 || 0x00 || payload) via Ed25519. */
+    public byte[] signBinary(String kid, byte[] domainPrefixedMessage) {
+        return Ed25519.sign(keyProvider.getSigningPrivateKey(kid), domainPrefixedMessage);
+    }
+
+    /** Vérifie une signature Ed25519 sur une charge utile binaire avec préfixe de domaine. */
+    public boolean verifyBinary(String kid, byte[] domainPrefixedMessage, byte[] signature) {
+        return Ed25519.verify(keyProvider.getSigningPublicKey(kid), domainPrefixedMessage, signature);
+    }
 
     /** Chiffre le jeton patient S (pour Amal) avec la clé dérivée K_tok et l'ID d'objet en AAD. */
     public byte[] encryptTokenS(String kid, String objectId, byte[] tokenS) {

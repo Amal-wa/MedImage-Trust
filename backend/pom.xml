@@ -13,6 +13,7 @@
   <modules>
     <module>medimage-crypto</module>
     <module>medimage-fingerprint</module>
+    <module>medimage-watermark</module>
     <!-- à venir : medimage-dicom, medimage-embedding, medimage-stego, medimage-watermark,
          medimage-audit, medimage-web -->
   </modules>
@@ -40,6 +41,11 @@
         <artifactId>junit-jupiter</artifactId>
         <version>${junit.version}</version>
         <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>tn.medimage</groupId>
+        <artifactId>medimage-watermark</artifactId>
+        <version>${project.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
