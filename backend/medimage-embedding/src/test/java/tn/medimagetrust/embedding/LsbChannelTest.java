@@ -25,7 +25,7 @@ class LsbChannelTest {
     @DisplayName("Aller-retour S (64 octets) et W (208 octets), écart ≤ 1, aucun pixel hors S et W touché")
     void roundTripAndDeviation() {
         Random rnd = new Random(TEST_SEED_LSB);
-        int[] work = image.pixels();
+        char[] work = image.pixels();
         LsbChannel ch = new LsbChannel(work, parts, true);
         byte[] s = Markings.randomBytes(64, rnd);
         byte[] w = Markings.randomBytes(208, rnd);
@@ -33,7 +33,7 @@ class LsbChannelTest {
         ch.writeW(w);
         assertArrayEquals(s, ch.readS());
         assertArrayEquals(w, ch.readW());
-        int[] orig = image.pixels();
+        char[] orig = image.pixels();
         boolean[] sw = new boolean[orig.length];
         for (int b : parts.sBlocks()) mark(sw, b);
         for (int b : parts.wBlocks()) mark(sw, b);
@@ -50,7 +50,7 @@ class LsbChannelTest {
     @Test
     @DisplayName("Ordre des bits : premier pixel du premier bloc W = bit de poids fort du premier octet")
     void bitOrder() {
-        int[] work = image.pixels();
+        char[] work = image.pixels();
         LsbChannel ch = new LsbChannel(work, parts, true);
         byte[] w = new byte[208];
         w[0] = (byte) 0x80;
@@ -66,7 +66,7 @@ class LsbChannelTest {
     @DisplayName("Un seul bit modifié dans un bloc S ou W de la copie : la relecture diffère (sceau fragile)")
     void singleBitFlipIsDetected() {
         Random rnd = new Random(TEST_SEED_LSB);
-        int[] work = image.pixels();
+        char[] work = image.pixels();
         LsbChannel ch = new LsbChannel(work, parts, true);
         byte[] s = Markings.randomBytes(64, rnd);
         byte[] w = Markings.randomBytes(208, rnd);

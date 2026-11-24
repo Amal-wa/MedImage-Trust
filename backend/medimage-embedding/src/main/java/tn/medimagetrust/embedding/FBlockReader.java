@@ -14,13 +14,14 @@ import static tn.medimagetrust.embedding.EmbeddingException.Reason.INVALID_INPUT
  * compensé ici. {@link #write(int, boolean[], double[])} est toujours refusé.</p>
  */
 public final class FBlockReader implements FBlockChannel {
-    private final int[] pixels;
+    private final char[] pixels;
     private final int rows;
     private final int cols;
     private final Partitions partitions;
 
     private FBlockReader(PixelImage copy, Partitions partitions) {
-        this.pixels = copy.pixels();
+        this.pixels = copy.view(); // lecture seule d'une image immuable : pas de copie
+
         this.rows = copy.rows();
         this.cols = copy.cols();
         this.partitions = partitions;

@@ -21,11 +21,11 @@ class DctQimTest {
 
     /** Image après ajout d'un bruit gaussien d'écart type {@code sigma}, arrondi et borné. */
     static PixelImage addGaussianNoise(PixelImage img, double sigma, Random rnd) {
-        int[] px = img.pixels();
+        char[] px = img.pixels();
         int max = img.maxValue();
         for (int i = 0; i < px.length; i++) {
             long v = Math.round(px[i] + rnd.nextGaussian() * sigma);
-            px[i] = (int) Math.max(0, Math.min(max, v));
+            px[i] = (char) Math.max(0, Math.min(max, v));
         }
         return new PixelImage(img.rows(), img.cols(), img.bitsStored(), img.photometric(), px, false, false);
     }
@@ -156,7 +156,7 @@ class DctQimTest {
         Markings.Marking m = Markings.markRandom(Phantoms.normal().image(), new Random(TEST_SEED_QIM));
         int newRows = 256;
         int cols = m.marked().cols();
-        int[] px = java.util.Arrays.copyOf(m.marked().pixels(), newRows * cols);
+        char[] px = java.util.Arrays.copyOf(m.marked().pixels(), newRows * cols);
         PixelImage cropped = new PixelImage(newRows, cols, 12, Photometric.MONOCHROME2, px, false, false);
         FBlockReader reader = FBlockReader.of(cropped, m.partitions());
         int unreadable = 0;

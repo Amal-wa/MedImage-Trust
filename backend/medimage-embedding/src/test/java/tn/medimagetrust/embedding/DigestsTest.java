@@ -24,7 +24,7 @@ class DigestsTest {
     private static PixelImage tinyImage() {
         int[] px = new int[256];
         for (int r = 0; r < 16; r++) for (int c = 0; c < 16; c++) px[r * 16 + c] = 17 * r + c;
-        return new PixelImage(16, 16, 12, Photometric.MONOCHROME2, px, false, false);
+        return PixelImage.fromInts(16, 16, 12, Photometric.MONOCHROME2, px, false, false);
     }
 
     private static RoniProfile tinyProfile() {
@@ -102,7 +102,7 @@ class DigestsTest {
         assertArrayEquals(d1, Digests.roiDigest(Phantoms.normal().image(), p));
         int roiPixel = 0;
         while (p.inRoni(roiPixel)) roiPixel++;
-        int[] px = img.pixels();
+        char[] px = img.pixels();
         px[roiPixel] ^= 1;
         assertFalse(java.util.Arrays.equals(d1, Digests.roiDigest(img.withPixels(px), p)));
     }

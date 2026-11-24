@@ -37,7 +37,7 @@ final class Phantoms {
                 body[r * s.cols() + c] = in;
             }
         }
-        return new Phantom(new PixelImage(s.rows(), s.cols(), s.bitsStored(), s.photometric(), px, false, false),
+        return new Phantom(PixelImage.fromInts(s.rows(), s.cols(), s.bitsStored(), s.photometric(), px, false, false),
                 body);
     }
 

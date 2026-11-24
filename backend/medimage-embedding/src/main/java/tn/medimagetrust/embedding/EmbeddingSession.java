@@ -1,7 +1,6 @@
 package tn.medimagetrust.embedding;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.function.Supplier;
 
 import static tn.medimagetrust.embedding.EmbeddingException.FinalCheck.DEVIATION_EXCEEDED;
@@ -35,13 +34,17 @@ import static tn.medimagetrust.embedding.EmbeddingException.Reason.INVALID_INPUT
 public final class EmbeddingSession {
     private enum State { F_PHASE, S_WRITTEN, W_WRITTEN, FINISHED, FAILED }
 
+    /** L'original (immuable) : seule copie gardée pour le contrôle « ROI bit à bit ». */
     private final PixelImage original;
-    private final int[] working;
+    /** Unique copie de travail ({@code char[]}) ; elle devient l'image marquée au {@link #finish()}. */
+    private final char[] working;
     private final RoniProfile profile;
     private final Partitions partitions;
     private final LsbChannel lsb;
-    private final boolean[][] fBits;
-    private final double[][] fDither;
+    /** Blocs F écrits, dans l'ordre d'écriture (au plus 128) : indice dans la classe F, bits et dithers. */
+    private final int[] fIndices = new int[EmbeddingProfile.F_USED_BLOCKS];
+    private final boolean[][] fBits = new boolean[EmbeddingProfile.F_USED_BLOCKS][];
+    private final double[][] fDither = new double[EmbeddingProfile.F_USED_BLOCKS][];
     private final FBlockChannel fChannel = new SessionFChannel();
     private int fBlocksWritten;
     private byte[] sPayload;
@@ -54,8 +57,15 @@ public final class EmbeddingSession {
         this.profile = profile;
         this.partitions = partitions;
         this.lsb = new LsbChannel(working, partitions, true);
-        this.fBits = new boolean[partitions.fClassSize()][];
-        this.fDither = new double[partitions.fClassSize()][];
+    }
+
+    private boolean fWritten(int fIndex) {
+        for (int k = 0; k < fBlocksWritten; k++) {
+            if (fIndices[k] == fIndex) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -157,7 +167,9 @@ public final class EmbeddingSession {
     public synchronized PixelImage finish() {
         return guarded(() -> {
             require(State.W_WRITTEN);
-            PixelImage marked = original.withPixels(working);
+            // L'image marquée prend possession de la copie de travail (pas de troisième copie). Plus aucune écriture
+            // n'est possible ensuite : la session passe à FINISHED ou FAILED, et injectFault est refusé.
+            PixelImage marked = PixelImage.adopt(original, working);
             finalCheck(marked);
             state = State.FINISHED;
             return marked;
@@ -174,7 +186,7 @@ public final class EmbeddingSession {
             if (state == State.FINISHED) {
                 throw new EmbeddingException(ILLEGAL_STATE);
             }
-            working[pixelIndex] = value;
+            working[pixelIndex] = (char) value;
             return null;
         });
     }
@@ -182,7 +194,7 @@ public final class EmbeddingSession {
     // ------------------------------------------------------------------------------------------ contrôle final
 
     private void finalCheck(PixelImage marked) {
-        int[] orig = original.view();
+        char[] orig = original.view();
         int n = orig.length;
         // (a) ROI identique bit à bit.
         for (int i = 0; i < n; i++) {
@@ -197,8 +209,12 @@ public final class EmbeddingSession {
         for (int k = 0; k < EmbeddingProfile.S_BLOCKS; k++) {
             checkBlockDeviation(partitions.sBlock(k), EmbeddingProfile.MAX_LSB_DEVIATION, orig);
         }
+        long[] used = Bits.alloc(partitions.fClassSize());
+        for (int k = 0; k < fBlocksWritten; k++) {
+            Bits.set(used, fIndices[k]);
+        }
         for (int k = 0; k < partitions.fClassSize(); k++) {
-            if (fBits[k] == null) {
+            if (!Bits.get(used, k)) {
                 if (maxBlockDeviation(partitions.fBlock(k), orig) != 0) {
                     throw new EmbeddingException(UNUSED_BLOCK_MODIFIED);
                 }
@@ -206,6 +222,7 @@ public final class EmbeddingSession {
                 checkBlockDeviation(partitions.fBlock(k), EmbeddingProfile.MAX_F_DEVIATION, orig);
             }
         }
+        used = null;
         // (c) PSNR de l'image entière.
         if (psnr(orig, working, original.maxValue()) < EmbeddingProfile.MIN_PSNR_DB) {
             throw new EmbeddingException(PSNR_TOO_LOW);
@@ -217,37 +234,27 @@ public final class EmbeddingSession {
         if (!Arrays.equals(lsb.readW(), wPayload)) {
             throw new EmbeddingException(W_READBACK_MISMATCH);
         }
-        for (int k = 0; k < partitions.fClassSize(); k++) {
-            if (fBits[k] != null) {
-                int[] read = readF(k, fDither[k]);
-                for (int j = 0; j < read.length; j++) {
-                    if (read[j] != (fBits[k][j] ? 1 : 0)) {
-                        throw new EmbeddingException(F_READBACK_MISMATCH);
-                    }
+        for (int k = 0; k < fBlocksWritten; k++) {
+            int[] read = readF(fIndices[k], fDither[k]);
+            for (int j = 0; j < read.length; j++) {
+                if (read[j] != (fBits[k][j] ? 1 : 0)) {
+                    throw new EmbeddingException(F_READBACK_MISMATCH);
                 }
             }
         }
-        // (e) Masque recalculé sur la copie : contient le masque d'origine.
-        List<RoniProfile> candidates = RoniDetector.candidates(marked);
-        boolean found = false;
-        for (RoniProfile c : candidates) {
-            if (c.sameMask(profile)) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
+        // (e) Masque recalculé sur la copie : l'un des candidats est le masque d'origine (un candidat à la fois).
+        if (!RoniDetector.candidatesContain(marked, profile)) {
             throw new EmbeddingException(MASK_UNSTABLE);
         }
     }
 
-    private void checkBlockDeviation(int block, int bound, int[] orig) {
+    private void checkBlockDeviation(int block, int bound, char[] orig) {
         if (maxBlockDeviation(block, orig) > bound) {
             throw new EmbeddingException(DEVIATION_EXCEEDED);
         }
     }
 
-    private int maxBlockDeviation(int block, int[] orig) {
+    private int maxBlockDeviation(int block, char[] orig) {
         int cols = partitions.cols();
         int top = partitions.blockTop(block);
         int left = partitions.blockLeft(block);
@@ -262,7 +269,7 @@ public final class EmbeddingSession {
     }
 
     /** PSNR en dB, {@code +∞} si les deux images sont identiques. */
-    static double psnr(int[] a, int[] b, int maxValue) {
+    static double psnr(char[] a, char[] b, int maxValue) {
         double sum = 0;
         for (int i = 0; i < a.length; i++) {
             double d = a[i] - b[i];
@@ -322,7 +329,7 @@ public final class EmbeddingSession {
                     }
                     boolean[] bits = QimBlockCodec.checkedBits(bits8);
                     double[] dither = QimBlockCodec.checkedDither(dither8);
-                    if (fBits[fIndex] != null || fBlocksWritten >= EmbeddingProfile.F_USED_BLOCKS) {
+                    if (fWritten(fIndex) || fBlocksWritten >= EmbeddingProfile.F_USED_BLOCKS) {
                         throw new EmbeddingException(ILLEGAL_STATE);
                     }
                     int block = partitions.fBlock(fIndex);
@@ -332,8 +339,9 @@ public final class EmbeddingSession {
                     int[] marked = QimBlockCodec.writeBlock(QimBlockCodec.getBlock(working, cols, top, left), bits,
                             dither, original.maxValue());
                     QimBlockCodec.putBlock(working, cols, top, left, marked);
-                    fBits[fIndex] = bits;
-                    fDither[fIndex] = dither;
+                    fIndices[fBlocksWritten] = fIndex;
+                    fBits[fBlocksWritten] = bits;
+                    fDither[fBlocksWritten] = dither;
                     fBlocksWritten++;
                     return null;
                 });

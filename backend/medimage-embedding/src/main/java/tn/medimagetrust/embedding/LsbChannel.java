@@ -13,19 +13,20 @@ import static tn.medimagetrust.embedding.EmbeddingException.Reason.INVALID_INPUT
  * que depuis une {@link EmbeddingSession}, qui impose l'ordre F, puis S, puis W.</p>
  */
 public final class LsbChannel {
-    private final int[] pixels;
+    private final char[] pixels;
     private final Partitions partitions;
     private final boolean writable;
 
     /** Canal sur un tableau de travail ; {@code writable} seulement pour la session. */
-    LsbChannel(int[] pixels, Partitions partitions, boolean writable) {
+    LsbChannel(char[] pixels, Partitions partitions, boolean writable) {
         this.pixels = pixels;
         this.partitions = partitions;
         this.writable = writable;
     }
 
     /**
-     * Canal en lecture seule sur une image marquée (copie des pixels).
+     * Canal en lecture seule sur une image marquée. Il lit directement les pixels de l'image, qui est immuable, sans
+     * copie de 2 octets par pixel ; aucune écriture n'est possible.
      *
      * @throws EmbeddingException {@code INVALID_INPUT} si l'image ou les partitions sont nulles, ou si les dimensions
      *                            ne correspondent pas
@@ -35,7 +36,7 @@ public final class LsbChannel {
                 || image.cols() != partitions.cols()) {
             throw new EmbeddingException(INVALID_INPUT);
         }
-        return new LsbChannel(image.pixels(), partitions, false);
+        return new LsbChannel(image.view(), partitions, false);
     }
 
     /** Écrit les 64 octets de S. */
@@ -70,7 +71,7 @@ public final class LsbChannel {
         for (int k = 0; k < expected * 8; k++) {
             int bit = (copy[k >>> 3] >>> (7 - (k & 7))) & 1;
             int i = pixelIndex(k, s, cols);
-            pixels[i] = (pixels[i] & ~1) | bit;
+            pixels[i] = (char) ((pixels[i] & ~1) | bit);
         }
     }
 

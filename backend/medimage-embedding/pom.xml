@@ -24,12 +24,38 @@
     </dependency>
   </dependencies>
 
+  <properties>
+    <!-- Le test de budget mémoire (36 Mpx, tag « memory ») est exclu de mvn -B test par défaut. -->
+    <embedding.excludedGroups>memory</embedding.excludedGroups>
+  </properties>
+
   <build>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <excludedGroups>${embedding.excludedGroups}</excludedGroups>
+        </configuration>
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      Avec -Dgroups=… (par exemple -Dgroups=memory -DargLine=-Xmx300m), l'exclusion par défaut est levée :
+      seuls les tags demandés s'exécutent.
+    -->
+    <profile>
+      <id>groupes-explicites</id>
+      <activation>
+        <property>
+          <name>groups</name>
+        </property>
+      </activation>
+      <properties>
+        <embedding.excludedGroups>aucun-groupe-exclu</embedding.excludedGroups>
+      </properties>
+    </profile>
+  </profiles>
 </project>

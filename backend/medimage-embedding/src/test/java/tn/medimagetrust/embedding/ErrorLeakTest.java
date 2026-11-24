@@ -45,8 +45,10 @@ class ErrorLeakTest {
         List<Supplier<Object>> ops = new ArrayList<>();
         ops.add(() -> { EmbeddingLimits.checkDimensions(20_000, 20_000, 16); return null; });
         ops.add(() -> { EmbeddingLimits.checkDimensions(0, 513, 12); return null; });
-        ops.add(() -> new PixelImage(511, 513, 12, Photometric.MONOCHROME2, new int[7], false, false));
-        ops.add(() -> new PixelImage(2, 2, 12, Photometric.MONOCHROME2, new int[] {1, 2, 3, 4097}, false, false));
+        ops.add(() -> PixelImage.fromInts(511, 513, 12, Photometric.MONOCHROME2, new int[7], false, false));
+        ops.add(() -> new PixelImage(511, 513, 12, Photometric.MONOCHROME2, new char[7], false, false));
+        ops.add(() -> PixelImage.fromInts(2, 2, 12, Photometric.MONOCHROME2, new int[] {1, 2, 3, 4097}, false, false));
+        ops.add(() -> new PixelImage(2, 2, 12, Photometric.MONOCHROME2, new char[] {1, 2, 3, 4097}, false, false));
         ops.add(() -> RoniDetector.detect(Phantoms.small64().image()));
         ops.add(() -> RoniDetector.detect(Phantoms.lowContrast().image()));
         ops.add(() -> RoniDetector.detect(Phantoms.tinyBody().image()));

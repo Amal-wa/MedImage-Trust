@@ -42,7 +42,7 @@ public final class Digests {
         md.update(int32(image.rows()));
         md.update(int32(image.cols()));
         md.update((byte) image.bitsStored());
-        int[] px = image.view();
+        char[] px = image.view();
         byte[] buf = new byte[8192];
         int pos = 0;
         for (int i = 0; i < px.length; i++) {

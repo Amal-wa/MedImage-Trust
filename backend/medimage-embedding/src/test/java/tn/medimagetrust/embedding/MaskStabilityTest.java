@@ -41,7 +41,7 @@ class MaskStabilityTest {
                 Phantoms.zeroBackground().image()}) {
             RoniProfile profile = RoniDetector.detect(img);
             Partitions parts = Partitions.of(profile);
-            int[] work = img.pixels();
+            char[] work = img.pixels();
             for (int k : Markings.pickFIndices(parts.fClassSize(), EmbeddingProfile.F_USED_BLOCKS, rnd)) {
                 int b = parts.fBlock(k);
                 int top = parts.blockTop(b);

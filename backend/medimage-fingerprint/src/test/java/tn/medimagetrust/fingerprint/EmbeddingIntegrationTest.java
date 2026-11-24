@@ -64,7 +64,7 @@ class EmbeddingIntegrationTest {
                 px[r * cols + c] = Math.max(0, Math.min(4095, v));
             }
         }
-        return new PixelImage(rows, cols, 12, Photometric.MONOCHROME2, px, false, false);
+        return PixelImage.fromInts(rows, cols, 12, Photometric.MONOCHROME2, px, false, false);
     }
 
     /** Émission complète : F par fingerprint, S et W aléatoires, contrôle final. */
@@ -106,8 +106,8 @@ class EmbeddingIntegrationTest {
 
         // Les complices comparent leurs copies et prennent chaque bloc F chez l'un ou l'autre.
         Partitions partitions = Partitions.of(RoniDetector.detect(original));
-        int[] pa = a.pixels(), pb = b.pixels();
-        int[] pirate = pa.clone();
+        char[] pa = a.pixels(), pb = b.pixels();
+        char[] pirate = pa.clone();
         for (int block : partitions.fBlocks()) {
             if (!rnd.nextBoolean()) continue;
             int top = (block / partitions.blockCols()) * 8, left = (block % partitions.blockCols()) * 8;
@@ -132,7 +132,7 @@ class EmbeddingIntegrationTest {
         FingerprintService svc = FingerprintService.forKid(crypto, KID);
         PixelImage copy = issue(original, svc, "recipient-5", new Random(3));
         int keptRows = 512 / 4;
-        int[] px = java.util.Arrays.copyOf(copy.pixels(), keptRows * 512);
+        char[] px = java.util.Arrays.copyOf(copy.pixels(), keptRows * 512);
         PixelImage cropped = new PixelImage(keptRows, 512, 12, Photometric.MONOCHROME2, px, false, false);
         var report = svc.analyze(imageId, FBlockReader.of(cropped, Partitions.of(RoniDetector.detect(original))),
                 EmbeddingSession.open(original).maskDigest(), recipients, Optional.empty());

@@ -155,18 +155,24 @@ final class QimBlockCodec {
     }
 
     /** Copie le bloc 8 × 8 de coin ({@code top}, {@code left}) d'une image de {@code cols} colonnes. */
-    static int[] getBlock(int[] pixels, int cols, int top, int left) {
+    static int[] getBlock(char[] pixels, int cols, int top, int left) {
         int[] out = new int[N * N];
         for (int r = 0; r < N; r++) {
-            System.arraycopy(pixels, (top + r) * cols + left, out, r * N, N);
+            int base = (top + r) * cols + left;
+            for (int c = 0; c < N; c++) {
+                out[r * N + c] = pixels[base + c];
+            }
         }
         return out;
     }
 
-    /** Écrit le bloc 8 × 8 de coin ({@code top}, {@code left}). */
-    static void putBlock(int[] pixels, int cols, int top, int left, int[] block) {
+    /** Écrit le bloc 8 × 8 de coin ({@code top}, {@code left}) ; valeurs déjà bornées à {@code [0, maxValue]}. */
+    static void putBlock(char[] pixels, int cols, int top, int left, int[] block) {
         for (int r = 0; r < N; r++) {
-            System.arraycopy(block, r * N, pixels, (top + r) * cols + left, N);
+            int base = (top + r) * cols + left;
+            for (int c = 0; c < N; c++) {
+                pixels[base + c] = (char) block[r * N + c];
+            }
         }
     }
 }

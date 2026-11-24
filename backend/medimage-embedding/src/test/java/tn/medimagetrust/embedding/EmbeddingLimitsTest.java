@@ -33,7 +33,7 @@ class EmbeddingLimitsTest {
             assertEquals(IMAGE_TOO_LARGE, assertThrows(EmbeddingException.class,
                     () -> new PixelImage(20_000, 20_000, 16, Photometric.MONOCHROME2, null, false, false)).reason());
             assertEquals(IMAGE_TOO_LARGE, assertThrows(EmbeddingException.class,
-                    () -> new PixelImage(20_000, 20_000, 16, Photometric.MONOCHROME2, new int[4], false, false))
+                    () -> PixelImage.fromInts(20_000, 20_000, 16, Photometric.MONOCHROME2, new int[4], false, false))
                     .reason());
         });
     }
@@ -80,32 +80,32 @@ class EmbeddingLimitsTest {
     @DisplayName("PixelImage malformée : longueur ≠ rows × cols, pixel > maxValue ou < 0, tableau ou photométrie nuls")
     void malformedPixelImage() {
         assertEquals(INVALID_INPUT, assertThrows(EmbeddingException.class,
-                () -> new PixelImage(4, 4, 8, Photometric.MONOCHROME2, new int[15], false, false)).reason());
+                () -> PixelImage.fromInts(4, 4, 8, Photometric.MONOCHROME2, new int[15], false, false)).reason());
         assertEquals(INVALID_INPUT, assertThrows(EmbeddingException.class,
-                () -> new PixelImage(4, 4, 8, Photometric.MONOCHROME2, new int[17], false, false)).reason());
+                () -> PixelImage.fromInts(4, 4, 8, Photometric.MONOCHROME2, new int[17], false, false)).reason());
         int[] tooBright = new int[16];
         tooBright[7] = 256;
         assertEquals(INVALID_INPUT, assertThrows(EmbeddingException.class,
-                () -> new PixelImage(4, 4, 8, Photometric.MONOCHROME2, tooBright, false, false)).reason());
+                () -> PixelImage.fromInts(4, 4, 8, Photometric.MONOCHROME2, tooBright, false, false)).reason());
         int[] negative = new int[16];
         negative[3] = -1;
         assertEquals(INVALID_INPUT, assertThrows(EmbeddingException.class,
-                () -> new PixelImage(4, 4, 12, Photometric.MONOCHROME2, negative, false, false)).reason());
+                () -> PixelImage.fromInts(4, 4, 12, Photometric.MONOCHROME2, negative, false, false)).reason());
         assertEquals(INVALID_INPUT, assertThrows(EmbeddingException.class,
                 () -> new PixelImage(4, 4, 8, Photometric.MONOCHROME2, null, false, false)).reason());
         assertEquals(INVALID_INPUT, assertThrows(EmbeddingException.class,
-                () -> new PixelImage(4, 4, 8, null, new int[16], false, false)).reason());
+                () -> PixelImage.fromInts(4, 4, 8, null, new int[16], false, false)).reason());
         assertEquals(INVALID_INPUT, assertThrows(EmbeddingException.class,
-                () -> new PixelImage(4, 4, 7, Photometric.MONOCHROME2, new int[16], false, false)).reason());
+                () -> PixelImage.fromInts(4, 4, 7, Photometric.MONOCHROME2, new int[16], false, false)).reason());
         int[] max16 = new int[16];
         java.util.Arrays.fill(max16, 65_535);
-        assertDoesNotThrow(() -> new PixelImage(4, 4, 16, Photometric.MONOCHROME1, max16, false, false));
+        assertDoesNotThrow(() -> PixelImage.fromInts(4, 4, 16, Photometric.MONOCHROME1, max16, false, false));
     }
 
     @Test
     @DisplayName("Accès hors limites à un pixel : INVALID_INPUT (jamais d'exception non fermée)")
     void outOfBoundsAccess() {
-        PixelImage img = new PixelImage(4, 4, 8, Photometric.MONOCHROME2, new int[16], false, false);
+        PixelImage img = PixelImage.fromInts(4, 4, 8, Photometric.MONOCHROME2, new int[16], false, false);
         assertEquals(INVALID_INPUT, assertThrows(EmbeddingException.class, () -> img.pixel(16)).reason());
         assertEquals(INVALID_INPUT, assertThrows(EmbeddingException.class, () -> img.pixel(-1)).reason());
         assertEquals(INVALID_INPUT, assertThrows(EmbeddingException.class, () -> img.pixel(4, 0)).reason());

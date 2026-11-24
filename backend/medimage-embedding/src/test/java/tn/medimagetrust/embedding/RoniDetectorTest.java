@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -184,5 +185,32 @@ class RoniDetectorTest {
         assertFalse(RoniDetector.candidates(Phantoms.small64().image()).isEmpty());
         assertFalse(RoniDetector.candidates(Phantoms.lowContrast().image()).isEmpty());
         assertFalse(RoniDetector.candidates(Phantoms.withFlags(Phantoms.normal().image(), true, true)).isEmpty());
+    }
+
+    @Test
+    @DisplayName("File de parcours bornée : un débordement (file de 1 à 64 entrées) donne exactement le même fond connexe")
+    void boundedQueueOverflowGivesSameResult() {
+        for (PixelImage img : new PixelImage[] {Phantoms.normal().image(), Phantoms.lightBackground().image(),
+                Phantoms.bodyTouchingEdges().image()}) {
+            int t = RoniDetector.otsuThreshold(img);
+            char[] px = img.pixels();
+            BackgroundPolarity pol = RoniDetector.polarity(px, img.rows(), img.cols(), t);
+            long[] reference = RoniDetector.borderConnectedBackground(px, img.rows(), img.cols(), t, pol);
+            for (int capacity : new int[] {1, 7, 64}) {
+                assertArrayEquals(reference,
+                        RoniDetector.borderConnectedBackground(px, img.rows(), img.cols(), t, pol, capacity));
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("candidatesContain (contrôle final, un masque à la fois) équivaut à candidates().anyMatch(sameMask)")
+    void candidatesContainMatchesCandidates() {
+        PixelImage img = Phantoms.normal().image();
+        RoniProfile p = RoniDetector.detect(img);
+        assertTrue(RoniDetector.candidatesContain(img, p));
+        RoniProfile other = new RoniProfile(img.rows(), img.cols(), p.threshold(), p.polarity(), new int[] {0});
+        assertFalse(RoniDetector.candidatesContain(img, other));
+        assertFalse(RoniDetector.candidates(img).stream().anyMatch(c -> c.sameMask(other)));
     }
 }

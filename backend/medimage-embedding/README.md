@@ -23,7 +23,7 @@ JDK (JUnit en test). Package : `tn.medimagetrust.embedding`.
 |---|---|---|
 | `EmbeddingProfile` | publique | Toutes les constantes du profil v2 (une seule classe). |
 | `EmbeddingLimits` | publique | `checkDimensions(rows, cols, bitsStored)` : contrôle O(1), **avant toute allocation**. |
-| `PixelImage` | publique (record) | Image immuable : copie défensive en entrée et en sortie, validation complète. |
+| `PixelImage` | publique (classe finale) | Image immuable en `char[]` (16 bits non signés) : copie défensive en entrée et en sortie, validation complète ; `fromInts(...)` pour les tests et les petits appels. |
 | `Photometric` | publique (enum) | `MONOCHROME1`, `MONOCHROME2` (information seulement). |
 | `RoniDetector` | publique | `detect(image)` avec refus ; `candidates(marked)` pour le vérificateur (T ± 4, sans refus). |
 | `RoniProfile` | publique | Seuil T, polarité, blocs RONI en ordre raster, masque par pixel, `profileVersion = 2`. |
@@ -37,6 +37,7 @@ JDK (JUnit en test). Package : `tn.medimagetrust.embedding`.
 | `EmbeddingException` | publique | `Reason` (liste fermée) et `FinalCheck` (sous-motif du contrôle final), `auditCode()`. |
 | `Otsu` | paquet | Seuil d'Otsu déterministe. |
 | `QimBlockCodec` | paquet | DCT-II orthonormée 8 × 8, QIM avec dither, écriture et lecture d'un bloc. |
+| `Bits` | paquet | Masques compactés, 1 bit par pixel dans un `long[]`. |
 
 ## Utilisation
 
@@ -203,9 +204,62 @@ portable. Les temps sont indicatifs et ne sont pas vérifiés par les tests.
 | PSNR, 12 bits, 512 × 512, 50 marquages | moyen 84,94 dB ; minimal 84,73 dB |
 | PSNR minimal, 8 bits, 256 × 256 (cas défavorable), 20 marquages | 54,57 dB |
 | Bits F relus après bruit gaussien σ = 1 / 1,5 / 2 (4 096 bits) | 99,39 % / 94,36 % / **86,40 %** |
-| Temps 512 × 512 : détection seule | ≈ 7 ms |
-| Temps 512 × 512 : session complète (F 128 blocs, S, W, contrôle final avec 9 masques candidats) | ≈ 66 ms |
-| `mvn -B test` sur le module (83 tests) | ≈ 42 s ; backend complet ≈ 1 min 02 s |
+| Temps 512 × 512 : détection seule (`int[]` → `char[]` et masques en bits) | ≈ 3,0 ms → ≈ 5,6 ms |
+| Temps 512 × 512 : session complète (F 128 blocs, S, W, contrôle final) | ≈ 30,4 ms → ≈ 14 ms |
+| Session complète sur 36 Mpx (6 000 × 6 000, 16 bits), `-Xmx300m` | open ≈ 1,1 s ; F, S, W ≈ 0,3 s ; finish ≈ 1,0 s |
+| `mvn -B test` sur le module (85 tests, test mémoire exclu) | ≈ 20 à 30 s |
+
+La détection est un peu plus lente (lecture des masques bit à bit). La session est deux fois plus rapide : le
+contrôle final s'arrête au premier masque candidat identique, au lieu de calculer les 9 masques candidats.
+
+## Bilan mémoire (36 Mpx)
+
+Budget du dossier v2.4 (§ « Mémoire ») : original 72 Mo + copie 72 Mo + masque 36 Mo + tampon 36 Mo ≈ 216 Mo par
+traitement (4 traitements simultanés, tas de 2 Gio) ; plafond absolu 250 Mio. Pour n = 36 000 000 pixels
+(6 000 × 6 000) :
+
+| Tableau | Type | Taille | Durée de vie |
+|---|---|---|---|
+| Pixels de l'appelant (avant construction) | `char[n]` | 68,7 Mio | jusqu'à la fin du constructeur de `PixelImage`, si l'appelant le libère |
+| Original (`PixelImage`, seule copie gardée pour le contrôle « ROI bit à bit ») | `char[n]` | 68,7 Mio | toute la session |
+| Copie de travail de la session | `char[n]` | 68,7 Mio | de `open` à `finish` ; devient ensuite l'image marquée, **sans troisième copie** (`PixelImage.adopt`) |
+| Fond connexe au bord (parcours) | `long[n/64]` | 4,3 Mio | pendant chaque calcul de masque |
+| File du parcours (anneau fixe) | `int[2^20]` | 4,0 Mio | pendant le parcours |
+| Masque « en attente » (débordement de la file) | `long[n/64]` | 4,3 Mio | seulement si la frontière dépasse 2^20 pixels |
+| Masque temporaire de l'érosion | `long[n/64]` | 4,3 Mio | pendant l'érosion |
+| Compteurs de l'érosion, indices du bord | `int[cols]`, `int[2(rows+cols)]` | 0,1 Mio | pendant le calcul |
+| Indices des blocs RONI (avant et après réduction) | `int[≤ n/64]` | ≤ 2 × 2,1 Mio | pendant `fullBlocks` |
+| Histogramme d'Otsu | `long[≤ 16 384]` | 0,1 Mio | pendant le seuil |
+| Profil RONI gardé (masque par pixel + indices de blocs) | `long[n/64]` + `int[]` | 4,3 + 2,1 Mio | toute la session |
+| Partitions (blocs W, S, F) | `int[]` | ≤ 2,1 Mio | toute la session |
+| Masque compacté pour `maskDigest` | `byte[n/8]` | 4,3 Mio | pendant le calcul du condensat |
+| Profil candidat du contrôle final (un seul à la fois) | `long[n/64]` + `int[]` | 6,4 Mio | pendant la comparaison |
+| Blocs F, S, W écrits, blocs F utilisés | `int[128]`, `long[classe/64]` | < 0,1 Mio | session / contrôle final |
+
+Pic estimé (pendant `finish`) : original 68,7 + copie 68,7 + profil 6,4 + partitions 2,1 + calcul d'un masque candidat
+≤ 12,6 + profil candidat 6,4 ≈ **165 Mio ≈ 173 Mo**, sous les 216 Mo du dossier et le plafond de 250 Mio. Le pic est
+estimé sans compter les pixels de l'appelant, qui ne coexistent avec l'original que dans le constructeur, avant la
+session (137 Mio au plus à ce moment-là).
+
+**Mesuré** (`MemoryBudgetTest`, `mvn -B -pl medimage-embedding test -Dgroups=memory -DargLine=-Xmx300m`, JDK 25,
+G1) :
+
+| Étape | Tas vivant après GC | Pic des pools du tas (borne haute, déchets compris) |
+|---|---|---|
+| Image construite | 69,0 Mio | — |
+| `open` (détection, partitions) | 147,2 Mio | 147,0 Mio |
+| F, S, condensats, W | 147,3 Mio | 160,0 Mio |
+| `finish` (contrôle final) | 147,3 Mio | 174,3 Mio |
+
+Aucune `OutOfMemoryError` avec un tas de 300 Mio. Pic mesuré : 147,3 Mio retenus, 174,3 Mio au plus en comptant les
+déchets pas encore collectés (182,8 Mo), sous les 216 Mo.
+
+Ce qui a changé pour y arriver : pixels en `char[]` (2 octets au lieu de 4) dans `PixelImage` et dans toutes les
+copies de travail ; masques compactés d'un bit par pixel ; file de parcours de taille fixe (aucun
+`ArrayDeque<Integer>`, aucun tableau `int` de taille n) ; lecteurs `LsbChannel.reader` et `FBlockReader.of` sans copie
+de l'image (elle est immuable) ; image marquée construite sans copie à partir de la copie de travail ; contrôle final
+qui garde un seul masque candidat à la fois. `RoniDetector.candidates` (côté vérificateur) peut encore garder jusqu'à
+9 profils : jusqu'à 58 Mio à 36 Mpx, à itérer un par un dans le module watermark si besoin.
 
 ## Exigence → test(s)
 
@@ -278,9 +332,13 @@ La correspondance suit les conditions G de la v2.4 (« conditions pour marquer u
    ROI, écarts, PSNR, relectures S, W, F, masque.
 10. **Arrondis** : `floor(x + 0,5)` pour la QIM et la DCT inverse ; égalité de distance à l'extraction → bit 0.
 11. **`Photometric` n'intervient pas dans la détection** : la polarité vient du bord, comme le dit la v2.4.
-12. **Mémoire à 36 Mpx** : `PixelImage` impose `int[]` (4 octets par pixel). Original 144 Mo + copie de travail
-    144 Mo + deux masques `boolean[]` de 36 Mo pendant la détection : au-delà du budget de 250 Mio par traitement de
-    SEC-F02. Il faudrait un stockage `short[]`/`char[]`, ce qui change l'interface demandée : à décider.
+12. **Mémoire à 36 Mpx — corrigé.** `PixelImage` stocke maintenant des `char[]`, les masques sont compactés à
+    1 bit par pixel, et l'image marquée reprend la copie de travail sans copie. Pic estimé ≈ 165 Mio (173 Mo).
+    **Mesuré** sur 6 000 × 6 000 à 16 bits avec `-Xmx300m` : 147,3 Mio vivants, 174,3 Mio au plus en comptant les
+    déchets (182,8 Mo), sous le budget de 216 Mo du dossier et le plafond de 250 Mio (voir « Bilan mémoire »).
+    Conséquences sur l'interface : le constructeur de `PixelImage` reçoit un `char[]`, et `pixels()` renvoie un
+    `char[]` ; `PixelImage.fromInts(...)` garde l'entrée en `int[]`. `PixelImage` est une classe finale et non plus un
+    `record` (mêmes accesseurs), pour pouvoir reprendre la copie de travail sans troisième copie.
 13. **Point d'injection de défaut** : `EmbeddingSession.injectFault` (visibilité paquet) sert au test de mutation
     SEC-M03. Pour qu'aucun autre code ne puisse l'appeler, il faudrait sceller le paquet (`module-info.java`) au moment
     de l'intégration dans `medimage-web`.

@@ -28,7 +28,7 @@ class InvariantPropertyTest {
         Set<BackgroundPolarity> polarities = new HashSet<>();
         for (int n = 0; n < IMAGES; n++) {
             PixelImage original = Phantoms.build(Phantoms.randomMarkableSpec(rnd), rnd.nextLong()).image();
-            int[] before = original.pixels();
+            char[] before = original.pixels();
             Markings.Marking m = Markings.markRandom(original, rnd);
             check(m);
             assertArrayEquals(before, original.pixels(), "l'original a été modifié");
@@ -41,8 +41,8 @@ class InvariantPropertyTest {
     }
 
     private static void check(Markings.Marking m) {
-        int[] o = m.original().pixels();
-        int[] k = m.marked().pixels();
+        char[] o = m.original().pixels();
+        char[] k = m.marked().pixels();
         Partitions p = m.partitions();
         int cols = p.cols();
         byte[] kind = new byte[o.length]; // 0 ROI, 1 S/W, 2 F utilisé, 3 F non utilisé

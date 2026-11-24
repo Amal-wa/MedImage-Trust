@@ -144,19 +144,19 @@ class FailClosedTest {
     @Test
     @DisplayName("L'image d'origine et le tableau de l'appelant ne sont jamais modifiés")
     void originalNeverModified() {
-        int[] callerArray = original.pixels();
+        char[] callerArray = original.pixels();
         PixelImage img = new PixelImage(original.rows(), original.cols(), original.bitsStored(),
                 original.photometric(), callerArray, false, false);
-        int[] before = callerArray.clone();
+        char[] before = callerArray.clone();
         Markings.Marking m = Markings.markRandom(img, new Random(TEST_SEED_FAIL));
         assertArrayEquals(before, img.pixels());
         assertArrayEquals(before, callerArray);
         // Copies défensives en entrée et en sortie.
-        callerArray[0] = callerArray[0] ^ 1;
-        assertEquals(before[0], img.pixel(0));
-        int[] out = m.marked().pixels();
-        out[0] = out[0] ^ 1;
-        assertEquals(m.marked().pixels()[0], m.marked().pixel(0));
+        callerArray[0] = (char) (callerArray[0] ^ 1);
+        assertEquals((int) before[0], img.pixel(0));
+        char[] out = m.marked().pixels();
+        out[0] = (char) (out[0] ^ 1);
+        assertEquals((int) m.marked().pixels()[0], m.marked().pixel(0));
         // Même un échec du contrôle final ne touche pas l'original.
         finishWithFault(s -> s.injectFault(firstRoiPixel(s), 0));
         assertEquals(Phantoms.normal().image(), original);
