@@ -11,8 +11,10 @@ public final class SimulationReport {
         StringBuilder sb = new StringBuilder();
         sb.append("# Simulation de collusions - fingerprinting (SEC-D04)\n\n");
         sb.append(String.format(Locale.ROOT,
-                "Essais par stratégie : %d - destinataires : %d - effacements : %.1f %% - graine : %d\n\n",
-                cfg.trialsPerStrategy(), cfg.recipients(), cfg.erasureRate() * 100, cfg.seed()));
+                "Essais par stratégie : %d - destinataires : %d - blocs effacés : %.1f %% - erreurs QIM : %.1f %%"
+                        + " - graine : %d\n\n",
+                cfg.trialsPerStrategy(), cfg.recipients(), cfg.blockErasureRate() * 100, cfg.bitErrorRate() * 100,
+                cfg.seed()));
         sb.append("| Stratégie | Fausses accusations | Taux FA | Borne haute 95 % | Détection >= 1 complice | Les 2 complices |\n");
         sb.append("|---|---|---|---|---|---|\n");
         for (var r : results) {
@@ -20,13 +22,16 @@ public final class SimulationReport {
                     r.strategy(), r.falseAccusationTrials(), r.trials(), r.falseAccusationRate() * 100,
                     r.falseAccusationUpper95() * 100, r.detectionRate() * 100, r.bothDetectedRate() * 100));
         }
-        sb.append("\nObjectifs : fausse accusation <= 0,1 % ; détection d'au moins un complice >= 90 % (objectif initial, révisé après simulation).\n");
+        sb.append("\nObjectifs : 0 fausse accusation (taux <= 0,1 %) ; détection d'au moins un complice >= 99 %.\n");
         return sb.toString();
     }
 
     public static String toJson(CollusionSimulator.Config cfg, List<CollusionSimulator.StrategyResult> results) {
         StringBuilder sb = new StringBuilder("{\"trialsPerStrategy\":").append(cfg.trialsPerStrategy())
-                .append(",\"recipients\":").append(cfg.recipients()).append(",\"results\":[");
+                .append(",\"recipients\":").append(cfg.recipients())
+                .append(String.format(Locale.ROOT, ",\"blockErasureRate\":%.4f,\"bitErrorRate\":%.4f",
+                        cfg.blockErasureRate(), cfg.bitErrorRate()))
+                .append(",\"results\":[");
         for (int i = 0; i < results.size(); i++) {
             var r = results.get(i);
             if (i > 0) sb.append(',');

@@ -19,7 +19,11 @@
       <groupId>tn.medimage</groupId>
       <artifactId>medimage-crypto</artifactId>
     </dependency>
-    <!-- à venir : medimage-embedding (adaptateur FPartition sur la classe F de la RONI) -->
+    <!-- Couche robuste F (v2.4) : interface FBlockChannel, QIM sur DCT 8 x 8 dans la classe F de la RONI. -->
+    <dependency>
+      <groupId>tn.medimage</groupId>
+      <artifactId>medimage-embedding</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

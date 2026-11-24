@@ -30,9 +30,8 @@ medimage-crypto  ◄── medimage-embedding ◄── medimage-fingerprint
 medimage-web : dépendra de tous les modules (aujourd'hui : API Jakarta EE seulement)
 ```
 
-- `medimage-fingerprint` dépend aujourd'hui de `medimage-crypto` seulement. La dépendance vers `medimage-embedding`
-  arrivera avec le passage à `FBlockChannel` (voir les écarts ci-dessous). L'ordre des modules du pom parent la
-  prévoit déjà.
+- `medimage-fingerprint` dépend de `medimage-crypto` (K_F, `fCommit`) et de `medimage-embedding` (canal
+  `FBlockChannel` : 128 blocs × 8 bits par QIM sur DCT, v2.4 §4.1).
 - `medimage-embedding` ne dépend d'aucun module : il ne connaît aucune clé.
 - `medimage-audit` dépend de `medimage-crypto` et de rien d'autre (cahier des charges §7.3).
 
@@ -90,7 +89,6 @@ mvn -B -pl medimage-fingerprint exec:java -Dexec.args="3000 target/reports"   # 
 
 | Sujet | État actuel du code | Attendu par la v2.4 | Tâche |
 |---|---|---|---|
-| Fingerprint | LSB v2.3 : `FPartition` (rangs modulo 10, ≥ 6 144 pixels), 3 072 bits (1 024 symboles × 3) | `FBlockChannel` du module embedding : 128 blocs × 8 bits par QIM sur DCT, 1 bit par symbole (§4.1) | fingerprint |
 | CI | `.github/` hors du périmètre de cette tâche. `CODEOWNERS` est vide, `ci.yml` ne se déclenche qu'en push sur `feature/**` (pas `feat/*`, `fix/*`, `chore/*`), `cd.yml` appelle `scripts/deploy.sh`, absent du dépôt. Pas de banc d'attaques (JPEG Q75, redimensionnement) | pipeline complet (§9) | CI |
 
 Écarts propres au module embedding (bornage à 0, robustesse de F, SEC-M03 c) : voir
@@ -99,6 +97,10 @@ mvn -B -pl medimage-fingerprint exec:java -Dexec.args="3000 target/reports"   # 
 Corrigés dans le module crypto (branche `fix/crypto-v2.4`, voir `medimage-crypto/README.md`) : AAD et sous-clé par
 émission du jeton S, dérivation de toutes les clés depuis la seule KEK, kid sur 16 bits. Reste côté production :
 l'`ElytronKeyProvider` du module web.
+
+Corrigé dans le module fingerprint (branche `fix/fingerprint-v2.4`, voir `medimage-fingerprint/README.md`) : le code
+F n'est plus écrit en LSB v2.3 (`FPartition`, 3 072 bits) mais par `FBlockChannel` : 1 024 symboles, 1 bit par
+coefficient, 128 blocs secrets dans une classe F d'au moins 256 blocs.
 
 ## Points à trancher en équipe
 

@@ -11,14 +11,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Intégration avec le vrai module medimage-crypto : K_F dérivée par HKDF, versionnée par kid. */
 class CryptoIntegrationTest {
-    private static final int CLASS = 2 * FingerprintParams.MIN_F_CLASS_PIXELS;
+    private static final int CLASS = 2 * FingerprintParams.MIN_F_CLASS_BLOCKS;
     private final InMemoryKeyProvider keys = new InMemoryKeyProvider();
     private final CryptoService crypto = new CryptoService(keys);
     private final byte[] image = TestKeys.id(1), mask = TestKeys.id(2), emission = TestKeys.id(3);
     private final List<String> recipients = TestKeys.recipients(64);
 
-    private InMemoryFPartition issueWith(FingerprintService svc, String recipient) {
-        InMemoryFPartition f = new InMemoryFPartition(CLASS, 99);
+    private InMemoryFBlockChannel issueWith(FingerprintService svc, String recipient) {
+        InMemoryFBlockChannel f = new InMemoryFBlockChannel(CLASS, 99);
         svc.embed(f, mask, svc.prepare(image, emission, recipient));
         return f;
     }
@@ -46,7 +46,7 @@ class CryptoIntegrationTest {
     void oldCopyStaysAnalysableAfterKeyRotationWithTheRecordedKid() {
         keys.registerNewKek(1);
         var emissionService = FingerprintService.forKid(crypto, 1);
-        InMemoryFPartition leaked = issueWith(emissionService, "recipient-9");
+        InMemoryFBlockChannel leaked = issueWith(emissionService, "recipient-9");
 
         keys.registerNewKek(2); // rotation : le kid 2 devient actif
 
@@ -61,7 +61,7 @@ class CryptoIntegrationTest {
     @Test
     void differentEstablishmentKeysCannotAttributeEachOthersCopies() {
         keys.registerNewKek(1);
-        InMemoryFPartition leaked = issueWith(FingerprintService.forKid(crypto, 1), "recipient-1");
+        InMemoryFBlockChannel leaked = issueWith(FingerprintService.forKid(crypto, 1), "recipient-1");
 
         var other = new CryptoService(otherProvider());
         assertTrue(FingerprintService.forKid(other, 1)
@@ -74,7 +74,7 @@ class CryptoIntegrationTest {
         keys.registerNewKek(2);
         var fp = FingerprintService.forKid(crypto, 1).prepare(image, emission, "recipient-1");
         var svc2 = FingerprintService.forKid(crypto, 2);
-        assertThrows(FingerprintException.class, () -> svc2.embed(new InMemoryFPartition(CLASS, 1), mask, fp));
+        assertThrows(FingerprintException.class, () -> svc2.embed(new InMemoryFBlockChannel(CLASS, 1), mask, fp));
     }
 
     @Test

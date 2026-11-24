@@ -12,7 +12,7 @@ public final class SimulationMain {
     public static void main(String[] args) throws Exception {
         int trials = args.length > 0 ? Integer.parseInt(args[0]) : 3000;
         Path dir = Path.of(args.length > 1 ? args[1] : "target/reports");
-        var cfg = new CollusionSimulator.Config(trials, FingerprintParams.MAX_RECIPIENTS, 0.0, 20260101L);
+        var cfg = new CollusionSimulator.Config(trials, FingerprintParams.MAX_RECIPIENTS, 0.0, 0.0, 20260101L);
         List<CollusionSimulator.StrategyResult> results = new CollusionSimulator().run(cfg);
 
         Files.createDirectories(dir);
@@ -24,7 +24,7 @@ public final class SimulationMain {
         boolean ok = results.stream().allMatch(
                 r -> r.falseAccusationRate() <= FingerprintParams.TARGET_FALSE_ACCUSATION);
         if (!ok) {
-            System.err.println("ECHEC : taux de fausse accusation > " + FingerprintParams.TARGET_FALSE_ACCUSATION);
+            System.err.println("ECHEC : taux de fausse accusation au-dessus de l'objectif");
             System.exit(1);
         }
     }

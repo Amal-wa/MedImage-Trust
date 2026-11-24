@@ -1,6 +1,7 @@
 package tn.medimagetrust.fingerprint;
 
 import tn.medimagetrust.crypto.CryptoService;
+import tn.medimagetrust.embedding.FBlockChannel;
 
 import java.util.List;
 import java.util.Optional;
@@ -11,6 +12,10 @@ import java.util.Optional;
  * Un service est lié à UN kid (version de K_F). À l'émission on utilise le kid actif et on le
  * <b>enregistre avec l'émission</b> (registre SEC06) ; pour analyser une ancienne copie on recrée le
  * service avec le kid enregistré : {@code FingerprintService.forKid(crypto, kidDeLEmission)}.
+ * <p>
+ * Le canal F vient du module embedding : à l'émission {@code EmbeddingSession.fChannel()}, à l'analyse
+ * {@code FBlockReader.of(copieSuspecte, partitionsDeLEmission)}. Le {@code maskDigest} est celui de
+ * {@code tn.medimagetrust.embedding.Digests.maskDigest}.
  * <p>
  * Le module web doit aussi refuser le 65e destinataire d'une image et réserver l'analyse au
  * responsable sécurité (annotation, journalisation, aucune PII dans les logs).
@@ -53,18 +58,18 @@ public final class FingerprintService {
                 generator.commit(emissionId, recipientId));
     }
 
-    /** CU07 étape 2 : insérer dans la partition F. Échec : exception, émission annulée. */
-    public void embed(FPartition f, byte[] maskDigest, EmissionFingerprint fp) {
+    /** CU07 étape 2 : insérer dans la classe F (128 blocs secrets). Échec : exception, émission annulée. */
+    public void embed(FBlockChannel f, byte[] maskDigest, EmissionFingerprint fp) {
         if (fp.kid() != kid) {
             throw new FingerprintException(FingerprintException.Code.INVALID_INPUT, "kid de l'émission différent du service");
         }
         embedder.embed(f, maskDigest, fp.bits());
     }
 
-    /** CU08 : analyser la partition F d'une copie suspecte (service créé avec le kid de l'émission). */
-    public AttributionReport analyze(byte[] imageId, FPartition suspectF, byte[] maskDigest,
+    /** CU08 : analyser la classe F d'une copie suspecte (service créé avec le kid de l'émission). */
+    public AttributionReport analyze(byte[] imageId, FBlockChannel suspect, byte[] maskDigest,
                                      List<String> candidates, Optional<String> wRecipient) {
-        ExtractedWord w = embedder.extract(suspectF, maskDigest, FingerprintEmbedder.VotePolicy.MAJORITY);
+        ExtractedWord w = embedder.extract(suspect, maskDigest);
         return analyzer.analyze(imageId, w, candidates, wRecipient);
     }
 }

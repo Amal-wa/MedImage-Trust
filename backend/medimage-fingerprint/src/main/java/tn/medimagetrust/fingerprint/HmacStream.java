@@ -29,12 +29,17 @@ final class HmacStream {
 
     /** Entier uniforme dans [0, bound) sans biais de modulo (échantillonnage par rejet). */
     int nextInt(int bound) {
-        if (bound <= 0) throw new IllegalArgumentException("bound <= 0");
+        if (bound <= 0) throw new IllegalArgumentException("borne invalide");
         long rem = (Long.MAX_VALUE % bound + 1) % bound; // 2^63 mod bound
         long r;
         do {
             r = nextLong() >>> 1;
         } while (r > Long.MAX_VALUE - rem);
         return (int) (r % bound);
+    }
+
+    /** Réel uniforme dans [0, 1) : les 53 bits de poids fort des 8 octets suivants du flux. */
+    double nextUnitDouble() {
+        return (nextLong() >>> 11) * 0x1.0p-53;
     }
 }
