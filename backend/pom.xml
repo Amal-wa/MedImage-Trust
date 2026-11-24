@@ -10,11 +10,14 @@
   <packaging>pom</packaging>
   <name>MedImage-Trust :: backend (parent)</name>
 
+  <!-- Ordre de dépendance : chaque module ne dépend que de modules listés avant lui. -->
   <modules>
     <module>medimage-crypto</module>
+    <module>medimage-embedding</module>
     <module>medimage-fingerprint</module>
-    <!-- à venir : medimage-dicom, medimage-embedding, medimage-stego, medimage-watermark,
-         medimage-audit, medimage-web -->
+    <module>medimage-audit</module>
+    <module>medimage-web</module>
+    <!-- à venir : medimage-dicom, medimage-stego, medimage-watermark -->
   </modules>
 
   <properties>
@@ -32,14 +35,36 @@
       </dependency>
       <dependency>
         <groupId>tn.medimage</groupId>
+        <artifactId>medimage-embedding</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>tn.medimage</groupId>
         <artifactId>medimage-fingerprint</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>tn.medimage</groupId>
+        <artifactId>medimage-audit</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>tn.medimage</groupId>
+        <artifactId>medimage-web</artifactId>
+        <version>${project.version}</version>
+        <type>war</type>
       </dependency>
       <dependency>
         <groupId>org.junit.jupiter</groupId>
         <artifactId>junit-jupiter</artifactId>
         <version>${junit.version}</version>
         <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>jakarta.platform</groupId>
+        <artifactId>jakarta.jakartaee-api</artifactId>
+        <version>11.0.0</version>
+        <scope>provided</scope>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -51,6 +76,16 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
           <version>3.5.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-war-plugin</artifactId>
+          <version>3.4.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <version>3.5.0</version>
         </plugin>
       </plugins>
     </pluginManagement>

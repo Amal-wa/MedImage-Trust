@@ -8,9 +8,9 @@
 * **Nom de l'Application Métier : MedImage-Trust
 
 ### Membres de l'équipe :
-1. BEN ABDELJELIL Nour - Email : nour.benabdeljelil@supcom.tn - Rôle principal : Axe stéganographie
-2. TOUMI Nourhen - Email : nourhen.toumi@supcom.tn - Rôle principal : Axe watermarking
-3. BEN KHALIFA Amel - Email : amel.benkhalifa@supcom.tn - Rôle principal : Axe fingerprinting
+1. BEN ABDELJELIL Nour - Email : nour.benabdeljelil@supcom.tn - Rôle principal : Axe watermarking (et module crypto, registre de clés, politique d'autorisation)
+2. TOUMI Nourhen - Email : nourhen.toumi@supcom.tn - Rôle principal : Axe fingerprinting (et PWA, audit, CI/CD)
+3. BEN KHALIFA Amel - Email : amel.benkhalifa@supcom.tn - Rôle principal : Axe stéganographie (et brique RONI / embedding, contrôle DICOM)
 
 ## 📜 2. Déclaration d'Intégrité et d'Anti-Plagiat
 

@@ -4,27 +4,25 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>tn.medimage</groupId>
-  <artifactId>medimage-audit</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
-  <packaging>jar</packaging>
+  <parent>
+    <groupId>tn.medimage</groupId>
+    <artifactId>medimage-backend</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
 
-  <properties>
-    <maven.compiler.release>25</maven.compiler.release>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-  </properties>
+  <artifactId>medimage-audit</artifactId>
+  <packaging>jar</packaging>
 
   <dependencies>
     <!-- Cahier des charges §7.3 : audit dépend de crypto (et de rien d'autre). -->
     <dependency>
       <groupId>tn.medimage</groupId>
       <artifactId>medimage-crypto</artifactId>
-      <version>0.1.0-SNAPSHOT</version>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
-      <version>5.11.4</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -34,7 +32,6 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.5.2</version>
       </plugin>
     </plugins>
   </build>
