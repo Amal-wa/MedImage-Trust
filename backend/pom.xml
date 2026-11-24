@@ -15,9 +15,10 @@
     <module>medimage-crypto</module>
     <module>medimage-embedding</module>
     <module>medimage-fingerprint</module>
+    <module>medimage-watermark</module>
     <module>medimage-audit</module>
     <module>medimage-web</module>
-    <!-- à venir : medimage-dicom, medimage-stego, medimage-watermark -->
+    <!-- à venir : medimage-dicom, medimage-stego -->
   </modules>
 
   <properties>
@@ -41,6 +42,11 @@
       <dependency>
         <groupId>tn.medimage</groupId>
         <artifactId>medimage-fingerprint</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>tn.medimage</groupId>
+        <artifactId>medimage-watermark</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

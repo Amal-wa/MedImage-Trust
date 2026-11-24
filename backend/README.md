@@ -13,22 +13,28 @@ backend/
 ├── medimage-crypto/         Nour     SHA-256, HMAC, HKDF, AES-GCM, Ed25519, JCS : seul module qui manipule des clés
 ├── medimage-embedding/      Amel     RONI (profil v2), partitions W/S/F, QIM sur DCT pour F, LSB pour S et W, contrôle final
 ├── medimage-fingerprint/    Nourhen  code de Tardos : génération, insertion, analyse des fuites, simulation de collusions
+├── medimage-watermark/      Nour     preuve W : charge binaire MIT-W-v1 de 208 octets signée Ed25519, vérification en échec fermé
 ├── medimage-audit/          Nourhen  journal d'audit chaîné, ancrage quotidien signé, alertes A1 à A7, rétention
 └── medimage-web/            Nour     API Jakarta REST servie par WildFly (WAR) ; pour l'instant /api/health
 ```
 
-À venir : `medimage-dicom` (lecture et contrôle DICOM), `medimage-stego` (jeton S), `medimage-watermark` (preuve W).
+À venir : `medimage-dicom` (lecture et contrôle DICOM), `medimage-stego` (jeton S).
 Racine de packages commune : `tn.medimagetrust` ; `groupId` Maven commun : `tn.medimage`.
 
 ## Dépendances entre modules
 
 ```
 medimage-crypto  ◄── medimage-embedding ◄── medimage-fingerprint
-       ▲
+       ▲  ▲
+       │  └───────── medimage-watermark ◄┄┄ medimage-embedding   (à brancher)
        └──────────── medimage-audit
 
 medimage-web : dépendra de tous les modules (aujourd'hui : API Jakarta EE seulement)
 ```
+
+- `medimage-watermark` dépend de `medimage-crypto` (`signBytes`, `verifyBytes`, `computeFCommit`, kid sur 16 bits).
+  La dépendance vers `medimage-embedding` (`Digests`, `LsbChannel`, `RoniDetector.candidates`) reste à brancher :
+  voir `medimage-watermark/README.md`.
 
 - `medimage-fingerprint` dépend de `medimage-crypto` (K_F, `fCommit`) et de `medimage-embedding` (canal
   `FBlockChannel` : 128 blocs × 8 bits par QIM sur DCT, v2.4 §4.1).
