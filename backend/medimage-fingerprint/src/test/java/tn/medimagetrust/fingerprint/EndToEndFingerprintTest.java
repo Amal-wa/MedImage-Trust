@@ -9,11 +9,11 @@ import java.util.Random;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * T-SEC-D04 (partie « essais de bout en bout ») : émission, collusion au niveau des pixels, extraction, analyse,
+ * T-SEC-D04 (partie « essais de bout en bout ») : émission, collusion au niveau des blocs F, extraction QIM, analyse,
  * avec la vraie PRF HMAC. 100 essais, 16 destinataires par image pour garder un temps de test court.
  */
 class EndToEndFingerprintTest {
-    private static final int CLASS = 2 * FingerprintParams.MIN_F_CLASS_PIXELS;
+    private static final int CLASS = 2 * FingerprintParams.MIN_F_CLASS_BLOCKS;
 
     @Test
     void hundredEndToEndTrials() {
@@ -27,14 +27,14 @@ class EndToEndFingerprintTest {
             int ia = rnd.nextInt(16), ib;
             do { ib = rnd.nextInt(16); } while (ib == ia);
 
-            InMemoryFPartition base = new InMemoryFPartition(CLASS, 31L * t);
-            InMemoryFPartition a = base.copy(), b = base.copy();
+            InMemoryFBlockChannel base = new InMemoryFBlockChannel(CLASS, 31L * t);
+            InMemoryFBlockChannel a = base.copy(), b = base.copy();
             service.embed(a, mask, service.prepare(image, TestKeys.id(t), recipients.get(ia)));
             service.embed(b, mask, service.prepare(image, TestKeys.id(t + 9000), recipients.get(ib)));
 
-            // Collusion au pixel près : sur chaque pixel qui diffère, choix au hasard.
-            InMemoryFPartition pirate = a.copy();
-            for (int i = 0; i < CLASS; i++) if (a.read(i) != b.read(i) && rnd.nextBoolean()) pirate.write(i, b.read(i) == 1);
+            // Collusion au bloc près : sur chaque bloc qui diffère, choix au hasard.
+            InMemoryFBlockChannel pirate = a.copy();
+            for (int i = 0; i < CLASS; i++) if (!a.sameBlock(b, i) && rnd.nextBoolean()) pirate.copyBlockFrom(b, i);
 
             var report = service.analyze(image, pirate, mask, recipients, Optional.empty());
             for (var acc : report.accused()) {

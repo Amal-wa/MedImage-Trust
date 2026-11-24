@@ -71,7 +71,7 @@ public final class WatermarkService {
         msg.putLong(emissionId.getLeastSignificantBits());
         msg.putLong(recipientId.getMostSignificantBits());
         msg.putLong(recipientId.getLeastSignificantBits());
-        return cryptoService.computeFCommit(String.valueOf(kid), msg.array());
+        return cryptoService.computeFCommit(kid, msg.array());
     }
 
     /** Génère et signe la partition W complète (208 octets). */
@@ -87,8 +87,10 @@ public final class WatermarkService {
             byte[] fCommit) {
         byte[] header144 = WatermarkPayload.serializeUnsignedHeader(
                 kid, issuerId, emissionId, issuedAt, flow, roiDigest, maskDigest, sDigest, fCommit);
+        // Message signé = "MIT-W-v1" ‖ 0x00 ‖ en-tête(144) : le préfixe est ajouté ici, une seule fois ;
+        // CryptoService.signBytes signe les octets tels quels (clé SK dérivée de la KEK, seul le kid actif signe).
         byte[] toSign = WatermarkPayload.buildSignedInput(header144);
-        byte[] signature = cryptoService.signBinary(String.valueOf(kid), toSign);
+        byte[] signature = cryptoService.signBytes(kid, toSign);
 
         WatermarkPayload payload = new WatermarkPayload(
                 WatermarkPayload.VERSION_1, kid, issuerId, emissionId, issuedAt, flow,
@@ -113,8 +115,8 @@ public final class WatermarkService {
         }
 
         // V4. Résolution du kid dans le registre des clés publiques
-        String kidStr = payload.kidAsString();
-        Optional<PublicKeyStatusRegistry.KeyMetadata> keyMetaOpt = keyRegistry.findByKid(kidStr);
+        int kid = payload.kid();
+        Optional<PublicKeyStatusRegistry.KeyMetadata> keyMetaOpt = keyRegistry.findByKid(kid);
         if (keyMetaOpt.isEmpty()) {
             return VerificationResult.rejected(VerificationReason.CLE_INCONNUE);
         }
@@ -129,7 +131,7 @@ public final class WatermarkService {
         byte[] signedInput = WatermarkPayload.buildSignedInput(header144);
         boolean sigOk;
         try {
-            sigOk = cryptoService.verifyBinary(kidStr, signedInput, payload.signature());
+            sigOk = cryptoService.verifyBytes(kid, signedInput, payload.signature());
         } catch (RuntimeException e) {
             return VerificationResult.rejected(VerificationReason.SIGNATURE_INVALIDE);
         }

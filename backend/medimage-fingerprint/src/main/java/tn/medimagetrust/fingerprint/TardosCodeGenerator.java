@@ -37,7 +37,11 @@ public final class TardosCodeGenerator {
         return symbols(imageId, recipientId, biases(imageId));
     }
 
-    /** Répète chaque symbole 3 fois : bit d'indice r*1024 + i = symbole i, répétition r. */
+    /**
+     * Bits à écrire dans F. En v2.4 ({@link FingerprintParams#REPETITIONS} = 1), ce sont exactement les 1 024 symboles
+     * du mot de code : bit {@code i} = symbole {@code i}. La boucle sur les répétitions est gardée (bit d'indice
+     * {@code r × 1024 + i} = symbole {@code i}, répétition {@code r}) pour rester valable si le facteur change.
+     */
     public static boolean[] expand(byte[] symbols) {
         boolean[] bits = new boolean[FingerprintParams.CODE_BITS];
         for (int r = 0; r < FingerprintParams.REPETITIONS; r++) {

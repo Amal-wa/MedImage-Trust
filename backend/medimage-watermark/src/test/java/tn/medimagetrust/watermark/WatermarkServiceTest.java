@@ -16,17 +16,17 @@ import tn.medimagetrust.crypto.InMemoryKeyProvider;
 class WatermarkServiceTest {
 
     private CryptoService cryptoService;
-    private Map<String, PublicKeyStatusRegistry.KeyMetadata> registryMap;
+    private Map<Integer, PublicKeyStatusRegistry.KeyMetadata> registryMap;
     private WatermarkService watermarkService;
 
     @BeforeEach
     void setUp() {
         InMemoryKeyProvider keyProvider = new InMemoryKeyProvider();
-        keyProvider.registerNewKeyVersion("1");
+        keyProvider.registerNewKek(1);
         cryptoService = new CryptoService(keyProvider);
         registryMap = new HashMap<>();
-        registryMap.put("1", new PublicKeyStatusRegistry.KeyMetadata(
-                "1", 100, Instant.parse("2026-01-01T00:00:00Z"),
+        registryMap.put(1, new PublicKeyStatusRegistry.KeyMetadata(
+                1, 100, Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2027-01-01T00:00:00Z"), null,
                 PublicKeyStatusRegistry.KeyStatus.ACTIVE));
         watermarkService = new WatermarkService(cryptoService, kid -> Optional.ofNullable(registryMap.get(kid)));
@@ -95,8 +95,8 @@ class WatermarkServiceTest {
                 watermarkService.verifyWatermark(w, roiDigest, maskDigest, alteredSDigest).reason());
 
         // 6. Clé révoquée
-        registryMap.put("1", new PublicKeyStatusRegistry.KeyMetadata(
-                "1", 100, Instant.parse("2026-01-01T00:00:00Z"),
+        registryMap.put(1, new PublicKeyStatusRegistry.KeyMetadata(
+                1, 100, Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2027-01-01T00:00:00Z"), Instant.parse("2026-11-01T00:00:00Z"),
                 PublicKeyStatusRegistry.KeyStatus.REVOKED));
         assertEquals(VerificationReason.CLE_EXPIREE_OU_REVOQUEE,

@@ -47,9 +47,12 @@ class TardosCodeGeneratorTest {
     }
 
     @Test
-    void expandRepeatsEachSymbolThreeTimes() {
+    void expandGivesTheCodeWordBits() {
+        // v2.4 : une seule répétition, les 1 024 bits écrits sont exactement les 1 024 symboles du mot de code.
         byte[] s = gen.symbols(image, "alice");
         boolean[] bits = TardosCodeGenerator.expand(s);
+        assertEquals(1, FingerprintParams.REPETITIONS);
+        assertEquals(FingerprintParams.SYMBOLS, bits.length);
         assertEquals(FingerprintParams.CODE_BITS, bits.length);
         for (int r = 0; r < FingerprintParams.REPETITIONS; r++)
             for (int i = 0; i < FingerprintParams.SYMBOLS; i++)

@@ -1,6 +1,7 @@
 package tn.medimagetrust.fingerprint;
 
 import tn.medimagetrust.crypto.CryptoService;
+import tn.medimagetrust.embedding.FBlockChannel;
 
 import java.util.List;
 import java.util.Optional;
@@ -12,36 +13,43 @@ import java.util.Optional;
  * <b>enregistre avec l'émission</b> (registre SEC06) ; pour analyser une ancienne copie on recrée le
  * service avec le kid enregistré : {@code FingerprintService.forKid(crypto, kidDeLEmission)}.
  * <p>
+ * Le canal F vient du module embedding : à l'émission {@code EmbeddingSession.fChannel()}, à l'analyse
+ * {@code FBlockReader.of(copieSuspecte, partitionsDeLEmission)}. Le {@code maskDigest} est celui de
+ * {@code tn.medimagetrust.embedding.Digests.maskDigest}.
+ * <p>
  * Le module web doit aussi refuser le 65e destinataire d'une image et réserver l'analyse au
  * responsable sécurité (annotation, journalisation, aucune PII dans les logs).
  */
 public final class FingerprintService {
     /** Données à confier à l'émission : kid à enregistrer, bits à écrire dans F, engagement à signer dans W. */
-    public record EmissionFingerprint(String kid, boolean[] bits, byte[] fCommit) {}
+    public record EmissionFingerprint(int kid, boolean[] bits, byte[] fCommit) {}
 
-    private final String kid;
+    /** Kid du branchement générique (PRF de test, sans module crypto) : hors de [0, 65 535], jamais un vrai kid. */
+    public static final int NO_KID = -1;
+
+    private final int kid;
     private final TardosCodeGenerator generator;
     private final FingerprintEmbedder embedder;
     private final ColluderAnalyzer analyzer;
 
-    /** Branchement de production : K_F issue de CryptoService pour ce kid. */
-    public static FingerprintService forKid(CryptoService crypto, String kid) {
+    /** Branchement de production : K_F issue de CryptoService pour ce kid (entier sur 16 bits). */
+    public static FingerprintService forKid(CryptoService crypto, int kid) {
         return new FingerprintService(new CryptoPrf(crypto, kid), kid);
     }
 
     /** Branchement générique (tests unitaires avec {@link HmacSha256Prf}). */
     public FingerprintService(Prf prf) {
-        this(prf, "test");
+        this(prf, NO_KID);
     }
 
-    private FingerprintService(Prf prf, String kid) {
+    private FingerprintService(Prf prf, int kid) {
         this.kid = kid;
         this.generator = new TardosCodeGenerator(prf);
         this.embedder = new FingerprintEmbedder(prf);
         this.analyzer = new ColluderAnalyzer(generator);
     }
 
-    public String kid() { return kid; }
+    public int kid() { return kid; }
 
     /** CU07 étape 1 : générer le code du destinataire et l'engagement. */
     public EmissionFingerprint prepare(byte[] imageId, byte[] emissionId, String recipientId) {
@@ -50,18 +58,18 @@ public final class FingerprintService {
                 generator.commit(emissionId, recipientId));
     }
 
-    /** CU07 étape 2 : insérer dans la partition F. Échec : exception, émission annulée. */
-    public void embed(FPartition f, byte[] maskDigest, EmissionFingerprint fp) {
-        if (!fp.kid().equals(kid)) {
+    /** CU07 étape 2 : insérer dans la classe F (128 blocs secrets). Échec : exception, émission annulée. */
+    public void embed(FBlockChannel f, byte[] maskDigest, EmissionFingerprint fp) {
+        if (fp.kid() != kid) {
             throw new FingerprintException(FingerprintException.Code.INVALID_INPUT, "kid de l'émission différent du service");
         }
         embedder.embed(f, maskDigest, fp.bits());
     }
 
-    /** CU08 : analyser la partition F d'une copie suspecte (service créé avec le kid de l'émission). */
-    public AttributionReport analyze(byte[] imageId, FPartition suspectF, byte[] maskDigest,
+    /** CU08 : analyser la classe F d'une copie suspecte (service créé avec le kid de l'émission). */
+    public AttributionReport analyze(byte[] imageId, FBlockChannel suspect, byte[] maskDigest,
                                      List<String> candidates, Optional<String> wRecipient) {
-        ExtractedWord w = embedder.extract(suspectF, maskDigest, FingerprintEmbedder.VotePolicy.MAJORITY);
+        ExtractedWord w = embedder.extract(suspect, maskDigest);
         return analyzer.analyze(imageId, w, candidates, wRecipient);
     }
 }

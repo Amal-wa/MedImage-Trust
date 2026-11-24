@@ -156,7 +156,6 @@ public final class WatermarkPayload {
 
     public byte version() { return version; }
     public int kid() { return kid; }
-    public String kidAsString() { return String.valueOf(kid); }
     public int issuerId() { return issuerId; }
     public UUID emissionId() { return emissionId; }
     public Instant issuedAt() { return issuedAt; }

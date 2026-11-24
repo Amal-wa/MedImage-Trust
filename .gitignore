@@ -10,3 +10,5 @@ dist/
 .vscode/
 *.iml
 .DS_Store
+*.war
+*.jar

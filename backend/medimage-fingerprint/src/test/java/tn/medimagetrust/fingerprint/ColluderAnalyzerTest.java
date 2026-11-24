@@ -9,7 +9,7 @@ import java.util.Random;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ColluderAnalyzerTest {
-    private static final int CLASS = 2 * FingerprintParams.MIN_F_CLASS_PIXELS;
+    private static final int CLASS = 2 * FingerprintParams.MIN_F_CLASS_BLOCKS; // 512 blocs
     private final Prf prf = TestKeys.prf(1);
     private final FingerprintService service = new FingerprintService(prf);
     private final TardosCodeGenerator gen = new TardosCodeGenerator(prf);
@@ -17,8 +17,8 @@ class ColluderAnalyzerTest {
     private final byte[] mask = TestKeys.id(2);
     private final List<String> recipients = TestKeys.recipients(64);
 
-    private InMemoryFPartition issue(String recipient) {
-        InMemoryFPartition f = new InMemoryFPartition(CLASS, 99);
+    private InMemoryFBlockChannel issue(String recipient) {
+        InMemoryFBlockChannel f = new InMemoryFBlockChannel(CLASS, 99);
         service.embed(f, mask, service.prepare(image, TestKeys.id(7), recipient));
         return f;
     }
@@ -33,7 +33,7 @@ class ColluderAnalyzerTest {
 
     @Test
     void unrelatedImageAccusesNobody() {
-        InMemoryFPartition noise = new InMemoryFPartition(CLASS, 123); // jamais marquée
+        InMemoryFBlockChannel noise = new InMemoryFBlockChannel(CLASS, 123); // jamais marquée
         var report = service.analyze(image, noise, mask, recipients, Optional.empty());
         assertEquals(AttributionReport.Verdict.NO_ACCUSATION_BELOW_THRESHOLD, report.verdict());
         assertTrue(report.accused().isEmpty());
@@ -47,10 +47,11 @@ class ColluderAnalyzerTest {
 
     @Test
     void twoColludersAreDetectedWithoutInnocentAccused() {
-        InMemoryFPartition a = issue("recipient-3"), b = issue("recipient-40");
-        InMemoryFPartition pirate = a.copy();
+        InMemoryFBlockChannel a = issue("recipient-3"), b = issue("recipient-40");
+        InMemoryFBlockChannel pirate = a.copy();
         Random rnd = new Random(5);
-        for (int i = 0; i < CLASS; i++) if (a.read(i) != b.read(i) && rnd.nextBoolean()) pirate.write(i, b.read(i) == 1);
+        // Collusion au bloc près : sur chaque bloc qui diffère entre les deux copies, choix au hasard.
+        for (int i = 0; i < CLASS; i++) if (!a.sameBlock(b, i) && rnd.nextBoolean()) pirate.copyBlockFrom(b, i);
         var report = service.analyze(image, pirate, mask, recipients, Optional.empty());
         assertEquals(AttributionReport.Verdict.ACCUSED, report.verdict());
         assertTrue(report.accused().stream().allMatch(
@@ -59,20 +60,31 @@ class ColluderAnalyzerTest {
 
     @Test
     void heavilyCroppedCopyIsNotConclusive() {
-        InMemoryFPartition f = issue("recipient-9");
-        f.cropFrom(CLASS / 10); // 90 % des pixels perdus : ~73 % des symboles effacés
+        InMemoryFBlockChannel f = issue("recipient-9");
+        f.cropFrom(CLASS / 10); // 90 % des blocs perdus : ~90 % des symboles effacés
         var report = service.analyze(image, f, mask, recipients, Optional.empty());
         assertEquals(AttributionReport.Verdict.TOO_MANY_ERASURES, report.verdict());
         assertTrue(report.accused().isEmpty());
     }
 
     @Test
-    void moderatelyCroppedCopyIsStillAttributedThanksToRepetitions() {
-        InMemoryFPartition f = issue("recipient-9");
-        f.cropFrom(CLASS / 4); // 75 % perdus : ~42 % de symboles effacés, il reste de quoi conclure
+    void moderatelyCroppedCopyIsStillAttributed() {
+        // v2.4 : sans répétition, perdre x % des blocs efface ~x % des symboles. 30 % perdus : il reste de quoi conclure.
+        InMemoryFBlockChannel f = issue("recipient-9");
+        f.cropFrom(CLASS * 7 / 10);
         var report = service.analyze(image, f, mask, recipients, Optional.empty());
         assertEquals(AttributionReport.Verdict.ACCUSED, report.verdict());
         assertEquals("recipient-9", report.accused().get(0).recipientId());
+    }
+
+    @Test
+    void sixtyPercentUnreadableBlocksGiveTooManyErasuresAndNoAccusation() {
+        InMemoryFBlockChannel f = issue("recipient-9");
+        f.cropFrom(CLASS * 4 / 10); // 60 % des blocs de la classe F illisibles
+        var report = service.analyze(image, f, mask, recipients, Optional.empty());
+        assertEquals(AttributionReport.Verdict.TOO_MANY_ERASURES, report.verdict());
+        assertTrue(report.accused().isEmpty());
+        assertTrue(report.erasures() > FingerprintParams.SYMBOLS / 2);
     }
 
     @Test

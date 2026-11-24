@@ -45,8 +45,11 @@ REVOKE ALL ON audit_log FROM app_role;  GRANT INSERT, SELECT ON audit_log TO app
 -- DELETE (purge) réservé à audit_maint_role, jamais au rôle applicatif.
 ```
   `append` doit lever `AuditConflictException` sur violation de `seq` (SQLState 23505).
-* `LogKeyProvider` adossé au keystore PKCS#12 du service d'audit (passphrase en Docker secret).
-* `AnchorStore` : `FileAnchorStore` sur le volume `medimage-anchors` (écriture réservée au service d'audit) et une
+* `LogKeyProvider` en production : graine K_log = HKDF(KEK, « MIT-LOG-v1 », kid), puis clé Ed25519 ; la KEK est la
+  seule entrée du credential store WildFly Elytron, ouvert par un mot de passe masqué (credential-reference). Pas de
+  keystore PKCS#12, pas de Docker (dossier v2.4, §8.2).
+* `AnchorStore` : `FileAnchorStore` sur un dossier dédié du système de fichiers du serveur (écriture réservée au
+  service d'audit) et une
   seconde instance sur la copie séparée.
 
 ## Limites assumées
