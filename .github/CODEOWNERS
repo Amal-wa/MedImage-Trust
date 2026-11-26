@@ -1,0 +1,12 @@
+# Revue obligatoire par le responsable de chaque partie (GitHub : Settings > Branches > Require review from Code Owners)
+*                                   @Amal-wa @benabdeljelilnour8-creator @Nourhene612
+
+/backend/medimage-embedding/        @Amal-wa
+/backend/medimage-crypto/           @benabdeljelilnour8-creator
+/backend/medimage-watermark/        @benabdeljelilnour8-creator
+/backend/medimage-web/              @benabdeljelilnour8-creator
+/backend/medimage-fingerprint/      @Nourhene612
+/backend/medimage-audit/            @Nourhene612
+/frontend/                          @Nourhene612
+/.github/                           @Nourhene612
+/docs/                              @Amal-wa

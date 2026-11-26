@@ -1,0 +1,14 @@
+target/
+node_modules/
+dist/
+.env
+*.pem
+*.p12
+*.jks
+*.key
+.idea/
+.vscode/
+*.iml
+.DS_Store
+*.war
+*.jar
