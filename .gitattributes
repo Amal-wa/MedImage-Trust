@@ -1,0 +1,7 @@
+# Fins de ligne LF pour les scripts : bash les exige, et les sommes SHA-256 de scripts/wildfly/cours/ (cours.sha256)
+# sont calculées sur le contenu LF. Sans cette règle, un poste Windows avec core.autocrlf les convertirait en CRLF.
+*.sh            text eol=lf
+*.cli           text eol=lf
+*.properties    text eol=lf
+*.tsv           text eol=lf
+scripts/wildfly/cours/**  text eol=lf

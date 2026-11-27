@@ -1,30 +1,216 @@
+# Déploiement continu (prompt 08). Correspondance consigne → job : docs/ci-cd.md.
+#
+# deploy-dev : après une CI réussie sur main (ou à la demande), WildFly 42 est installé dans le runner sur les ports
+# 80 et 443 par les scripts du dépôt, les WAR sont déployés et le test de fumée de deploy.sh s'exécute ; puis banc de
+# charge et scan ZAP baseline. Les journaux WildFly sont publiés en cas d'échec.
+# deploy-prod : uniquement à la demande, après deploy-dev, dans l'environnement GitHub « prod » (approbation
+# manuelle) ; s'arrête proprement avec « prod non configurée » tant que les secrets manquent.
 name: CD
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environnement cible"
+        description: Environnement cible (prod passe d'abord par dev)
         required: true
         default: dev
         type: choice
         options: [dev, prod]
 
-permissions:
-  contents: read
+concurrency:
+  group: cd-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
 
 jobs:
-  deploy:
+  deploy-dev:
+    name: dev (runner, ports 80/443)
+    # Uniquement une CI réussie sur un push vers main (jamais le code d'une PR externe), ou un lancement manuel.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: dev
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      MIT_BASE: /opt/medimage
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '25'
           cache: maven
-      - name: Build du WAR
+      - name: Construction des WAR (tests déjà passés en CI)
+        run: mvn -B -f middleware/pom.xml -DskipTests install
+      - name: Noms *.medimage.localhost vers 127.0.0.1
+        run: |
+          echo '127.0.0.1 medimage.localhost www.medimage.localhost admin.medimage.localhost api.medimage.localhost iam.medimage.localhost' \
+            | sudo tee -a /etc/hosts
+      - name: Ports 80 et 443 sans root (setcap sur java, voir scripts/README.md)
+        run: |
+          sudo setcap 'cap_net_bind_service=+ep' "$JAVA_HOME/bin/java"
+          # Un binaire doté de capacités ignore $ORIGIN : libjli.so doit être trouvée par ld.so.
+          echo "$JAVA_HOME/lib" | sudo tee /etc/ld.so.conf.d/medimage-java.conf
+          sudo ldconfig
+          "$JAVA_HOME/bin/java" -version
+      - name: Dossier de base
+        run: sudo install -d -o "$(id -u)" -g "$(id -g)" "$MIT_BASE"
+      - name: Installation de WildFly (somme SHA-256 vérifiée) et configuration par les .cli
+        id: install
+        run: bash scripts/install-wildfly.sh dev
+      - name: Déploiement et test de fumée
+        id: deploy
+        run: bash scripts/deploy.sh dev
+      - name: Mémoire du serveur avant la charge
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          "$MIT_BASE/wildfly/bin/jboss-cli.sh" --connect --controller=127.0.0.1:9990 \
+            --command='/core-service=platform-mbean/type=memory:read-attribute(name=heap-memory-usage)' \
+            | tee "$RUNNER_TEMP/heap-avant.txt"
+      - name: Banc de charge (p95 < 2 s, rafale de 200 requêtes)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          mvn -B -f middleware/pom.xml -pl api test-compile exec:java@load-bench
+          -Dload.api=https://api.medimage.localhost
+          -Dload.truststore="$MIT_BASE/tls/truststore.p12"
+      - name: Mémoire du serveur après la charge
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          "$MIT_BASE/wildfly/bin/jboss-cli.sh" --connect --controller=127.0.0.1:9990 \
+            --command='/core-service=platform-mbean/type=memory:read-attribute(name=heap-memory-usage)' \
+            | tee "$RUNNER_TEMP/heap-apres.txt"
+          {
+            [[ -f middleware/api/target/bench/load.md ]] && cat middleware/api/target/bench/load.md
+            echo
+            echo '## Tas du serveur WildFly'
+            echo
+            echo 'Avant la charge :'
+            echo '```'
+            cat "$RUNNER_TEMP/heap-avant.txt"
+            echo '```'
+            echo 'Après la charge :'
+            echo '```'
+            cat "$RUNNER_TEMP/heap-apres.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: ZAP baseline sur api
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: https://api.medimage.localhost/api/health
+          rules_file_name: .zap/rules.tsv
+          # -I : les avertissements n'échouent pas ; seules les règles FAIL de .zap/rules.tsv bloquent.
+          cmd_options: -I
+          fail_action: true
+          allow_issue_writing: false
+          artifact_name: zap-api
+      - name: ZAP baseline sur www
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: https://www.medimage.localhost/
+          rules_file_name: .zap/rules.tsv
+          cmd_options: -I
+          fail_action: true
+          allow_issue_writing: false
+          artifact_name: zap-www
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: banc-charge
+          path: middleware/api/target/bench/
+          if-no-files-found: ignore
+      - name: Journaux WildFly en cas d'échec
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: journaux-wildfly
+          path: |
+            /opt/medimage/wildfly-*/standalone/log/
+            /opt/medimage/logs/
+          if-no-files-found: ignore
+
+  deploy-prod:
+    name: prod (SSH, approbation manuelle)
+    needs: deploy-dev
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'prod'
+    runs-on: ubuntu-latest
+    # Les règles de l'environnement « prod » (relecteurs obligatoires) imposent l'approbation avant ce job.
+    environment: prod
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Configuration de prod présente ?
+        id: config
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_KNOWN_HOSTS: ${{ secrets.PROD_KNOWN_HOSTS }}
+          MIT_DOMAIN: ${{ vars.MIT_DOMAIN }}
+        run: |
+          missing=()
+          for name in PROD_HOST PROD_USER PROD_SSH_KEY PROD_KNOWN_HOSTS MIT_DOMAIN; do
+            [[ -n "${!name}" ]] || missing+=("$name")
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::notice title=prod non configurée::valeurs absentes de l'environnement prod : ${missing[*]} (voir docs/ci-cd.md)"
+            echo "## prod non configurée" >> "$GITHUB_STEP_SUMMARY"
+            echo "Valeurs absentes : ${missing[*]}. Aucun déploiement n'a été tenté." >> "$GITHUB_STEP_SUMMARY"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v7
+        if: steps.config.outputs.configured == 'true'
+      - uses: actions/setup-java@v6
+        if: steps.config.outputs.configured == 'true'
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Construction des WAR
+        if: steps.config.outputs.configured == 'true'
         run: mvn -B -f middleware/pom.xml -DskipTests package
-      - name: Déploiement (à compléter avec WildFly)
-        run: ./scripts/deploy.sh ${{ inputs.environment }}
+      - name: Clé SSH et hôtes connus (vérification stricte de l'hôte)
+        if: steps.config.outputs.configured == 'true'
+        env:
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_KNOWN_HOSTS: ${{ secrets.PROD_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/medimage_prod
+          chmod 600 ~/.ssh/medimage_prod
+          printf '%s\n' "$PROD_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Copie des WAR et des scripts, puis deploy.sh prod (test de fumée inclus)
+        if: steps.config.outputs.configured == 'true'
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          MIT_DOMAIN: ${{ vars.MIT_DOMAIN }}
+          RELEASE: medimage-release/${{ github.sha }}
+        run: |
+          ssh_opts=(-i ~/.ssh/medimage_prod -o StrictHostKeyChecking=yes -o BatchMode=yes)
+          # Les variables des commandes distantes sont développées ici, côté runner, volontairement.
+          # shellcheck disable=SC2029
+          {
+            ssh "${ssh_opts[@]}" "$PROD_USER@$PROD_HOST" "mkdir -p '$RELEASE/middleware/api/target' '$RELEASE/middleware/iam/target'"
+            scp "${ssh_opts[@]}" -r scripts "$PROD_USER@$PROD_HOST:$RELEASE/"
+            scp "${ssh_opts[@]}" middleware/api/target/api-1.0.war "$PROD_USER@$PROD_HOST:$RELEASE/middleware/api/target/"
+            scp "${ssh_opts[@]}" middleware/iam/target/iam-1.0.war "$PROD_USER@$PROD_HOST:$RELEASE/middleware/iam/target/"
+            ssh "${ssh_opts[@]}" "$PROD_USER@$PROD_HOST" "cd '$RELEASE' && MIT_DOMAIN='$MIT_DOMAIN' bash scripts/deploy.sh prod"
+          }
+      - name: Suppression de la clé SSH
+        if: always()
+        run: rm -f ~/.ssh/medimage_prod

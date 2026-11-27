@@ -1,40 +1,200 @@
+# Intégration continue SecDevOps (prompt 08). Correspondance consigne → job : docs/ci-cd.md.
 name: CI
 
 on:
   push:
-    branches: [main, develop, 'feature/**']
+    branches: ['**']
   pull_request:
-    branches: [main, develop]
+    branches: [main]
+  workflow_dispatch:
 
-permissions:
-  contents: read
+# Un seul calcul par branche : un nouveau push annule le précédent, sauf sur main (chaque commit y est vérifié).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Aucun droit par défaut : chaque job déclare le minimum dont il a besoin.
+permissions: {}
 
 jobs:
   build:
-    name: build
+    name: build (compilation, tests, ArchUnit)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '25'
           cache: maven
-      - name: Compilation et tests unitaires
-        run: mvn -B -f middleware/pom.xml verify
-      - uses: actions/upload-artifact@v4
+      - name: Compilation, tests unitaires, ArchUnit, vecteurs NIST
+        run: mvn -B -f middleware/pom.xml clean verify
+      - name: Tests de mémoire (tag memory, tas de 300 Mio)
+        run: mvn -B -f middleware/pom.xml -pl api -am test -Dgroups=memory -DargLine=-Xmx300m -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Nombre de tests dans le résumé
+        if: always()
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import glob, xml.etree.ElementTree as ET
+          rows = {}
+          for f in glob.glob('middleware/*/target/surefire-reports/TEST-*.xml'):
+              mod = f.split('/')[1]
+              s = ET.parse(f).getroot()
+              r = rows.setdefault(mod, [0, 0, 0, 0])
+              for i, k in enumerate(('tests', 'failures', 'errors', 'skipped')):
+                  r[i] += int(s.get(k, 0))
+          print('## Tests\n\n| Module | Tests | Échecs | Erreurs | Ignorés |\n|---|---|---|---|---|')
+          for mod, r in sorted(rows.items()):
+              print(f'| {mod} | {r[0]} | {r[1]} | {r[2]} | {r[3]} |')
+          EOF
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: rapports-tests
-          path: 'middleware/**/target/surefire-reports'
+          path: middleware/*/target/surefire-reports/
+          retention-days: 14
+
+  cours:
+    name: scripts du cours intacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Sommes SHA-256 de scripts/wildfly/cours/
+        run: bash scripts/check-cours.sh
 
   gitleaks:
-    name: gitleaks
+    name: gitleaks (secrets dans tout l'historique)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  codeql:
+    name: CodeQL (Java)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:java-kotlin
+
+  dependency-review:
+    name: revue des dépendances (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v5.0.1
+        with:
+          fail-on-severity: high
+
+  sbom:
+    name: SBOM CycloneDX
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Nomenclature agrégée des trois modules
+        run: mvn -B -f middleware/pom.xml org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sbom-cyclonedx
+          path: |
+            middleware/target/bom.json
+            middleware/target/bom.xml
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Analyse de tous les scripts bash
+        # ShellCheck est préinstallé sur ubuntu-latest ; -x suit les « source », -P SCRIPTDIR les résout depuis le script.
+        run: |
+          shellcheck --version
+          find scripts -name '*.sh' -print0 | xargs -0 shellcheck -x -P SCRIPTDIR
+
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Binaire officiel de rhysd/actionlint ; somme relevée le 27/11/2026 (fichier de sommes de la release et empreinte
+      # de l'asset sur l'API GitHub concordants). Changer les deux valeurs ensemble (voir docs/ci-cd.md).
+      ACTIONLINT_VERSION: 1.7.12
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+    steps:
+      - uses: actions/checkout@v7
+      - name: Téléchargement d'actionlint et vérification de la somme SHA-256
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          echo "${ACTIONLINT_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -version
+      - name: Analyse des workflows (avec ShellCheck sur les blocs run)
+        run: '"$RUNNER_TEMP/actionlint" -color'
+
+  attack-bench:
+    name: banc d'attaques (non bloquant)
+    needs: build
+    runs-on: ubuntu-latest
+    # Les seuils de récupération attendent la réponse de l'enseignant : le job informe sans bloquer la CI.
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Installation de core
+        run: mvn -B -f middleware/pom.xml -pl core -am install -DskipTests
+      - name: AttackBench (JPEG Q75 en 8 et 12 bits, redimensionnement 75 %)
+        run: mvn -B -f middleware/pom.xml -pl api test-compile exec:java@attack-bench -Dbench.copies=20
+      - name: Rapport dans le résumé
+        if: always()
+        run: |
+          if [[ -f middleware/api/target/bench/report.md ]]; then
+            cat middleware/api/target/bench/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: banc-attaques
+          path: middleware/api/target/bench/
+          if-no-files-found: warn
