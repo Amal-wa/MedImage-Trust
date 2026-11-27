@@ -75,6 +75,32 @@
           <mainClass>tn.medimagetrust.fingerprint.SimulationMain</mainClass>
           <classpathScope>test</classpathScope>
         </configuration>
+        <!--
+          Bancs de la CI/CD (prompt 08), dans les sources de test, absents du WAR. Exécutions nommées : la configuration
+          ci-dessus fixe mainClass, que -Dexec.mainClass ne remplace pas.
+            mvn -B -f middleware/pom.xml -pl api test-compile exec:java@attack-bench
+            mvn -B -f middleware/pom.xml -pl api test-compile exec:java@load-bench
+        -->
+        <executions>
+          <execution>
+            <id>attack-bench</id>
+            <configuration>
+              <mainClass>tn.medimagetrust.bench.AttackBench</mainClass>
+              <arguments>
+                <argument>${project.build.directory}/bench</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>load-bench</id>
+            <configuration>
+              <mainClass>tn.medimagetrust.bench.LoadBench</mainClass>
+              <arguments>
+                <argument>${project.build.directory}/bench</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

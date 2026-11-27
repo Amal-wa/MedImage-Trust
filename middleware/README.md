@@ -136,12 +136,13 @@ Ces valeurs sont à reprendre dans les futurs fichiers `.properties` de dev et d
 
 | Sujet | État actuel | Attendu par la v2.4 | Suite |
 |---|---|---|---|
-| CI | `ci.yml` ne se déclenche en push que sur `main`, `develop` et `feature/**` (pas `feat/*`, `fix/*`, `chore/*`) ; `cd.yml` appelle `scripts/deploy.sh`, absent du dépôt ; pas de banc d'attaques (JPEG Q75, redimensionnement) ; seuls les chemins vers `middleware/pom.xml` ont été corrigés | pipeline complet (§9) | prompt 08 |
 | Watermark ↔ embedding | `roiDigest` de watermark incompatible avec `Digests` d'embedding ; lecture W par `LsbChannel` et boucle sur `RoniDetector.candidates()` pas encore branchées | condensats uniques (§8.3), vérification V2-V3 (§8.4) | Nour (voir [`api/docs/watermark.md`](api/docs/watermark.md)) |
 | Watermark ↔ fingerprint | `fCommit` calculé différemment dans les deux packages | une seule source pour `fCommit` (§8.2) | Nour, Nourhen |
 | Vérification de W | clé dérivée de la KEK locale, pas le registre des clés publiques | registre des clés publiques (§4.2, SEC-K05) | Nour |
 | Production des clés | `ElytronKeyProvider` (credential store WildFly) pas encore écrit | KEK seule dans Elytron (§8.2, §8.6) | api, côté REST |
-| Découverte de `NoStoreFilter` | vérifiée sans serveur (`@Provider`, origine `medimage-core`, `NoStoreFilterPackagingTest`) | en-tête `Cache-Control: no-store` sur `/api/health` et `/iam/health` | test de fumée (prompt 08) |
+| Découverte de `NoStoreFilter` | vérifiée sans serveur (`NoStoreFilterPackagingTest`) ; contrôlée sur serveur par le test de fumée de `scripts/deploy.sh` (job CD dev), **pas encore exécuté** | en-tête `Cache-Control: no-store` sur `/api/health` et `/iam/health` | premier passage du job CD dev |
+| Test de fumée `/api/whoami` | endpoint absent : `deploy.sh` et `LoadBench` émettent l'avertissement « endpoint whoami absent (prompt 12) » sur un 404, sans échec (`TODO(prompt-12)`) | `401` en `application/problem+json`, sans trace, contrôle strict | prompt 12 |
+| Banc d'attaques | JPEG Q75 et redimensionnement 75 % effacent F en 12 bits (récupération ≈ 50 %) : pas QIM fixe Δ = 12 quelle que soit la profondeur ; en 8 bits, JPEG Q75 ≈ 71 % | récupération ≥ 95 % | correction prévue au prompt 09 (Δ proportionnel à la profondeur) ; question posée à l'enseignant (voir [`docs/ci-cd.md`](../docs/ci-cd.md)) |
 | iam | squelette : seule la sonde `/iam/health` | authentification, autorisation (SEC03) | prompt dédié |
 
 Écarts propres à embedding (bornage à 0, robustesse de F, SEC-M03 c) : voir [`api/docs/embedding.md`](api/docs/embedding.md),
@@ -149,7 +150,7 @@ section « Décisions à valider ».
 
 Déjà corrigés : jeton S (AAD et sous-clé par émission), dérivation de toutes les clés depuis la seule KEK, kid sur
 16 bits (crypto) ; code F en DCT/QIM sur `FBlockChannel` au lieu du LSB v2.3 (fingerprint) ; budget mémoire à 36 Mpx
-(embedding).
+(embedding) ; pipeline CI/CD complet, déclenché sur toutes les branches (prompt 08, [`docs/ci-cd.md`](../docs/ci-cd.md)).
 
 ## Points tranchés en équipe
 

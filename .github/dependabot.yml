@@ -1,0 +1,15 @@
+# Mises à jour de dépendances (prompt 08) : bibliothèques Maven du middleware et actions GitHub épinglées.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /middleware
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: [dependencies, ci]

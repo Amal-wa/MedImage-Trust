@@ -1,0 +1,15 @@
+# Propriétés système lues par api pour vérifier les jetons émis par iam (prompt 12).
+# Valeurs dans <env>.properties : medimage.iam.jwks-url, medimage.iam.issuer, medimage.token.audience.
+# Les valeurs passent par « set …=`:resolve-expression(…)` », comme dans les scripts fournis.
+set jwks=`:resolve-expression(expression="${medimage.iam.jwks-url}")`
+set issuer=`:resolve-expression(expression="${medimage.iam.issuer}")`
+set audience=`:resolve-expression(expression="${medimage.token.audience}")`
+if (outcome != success) of /system-property=medimage.iam.issuer:read-resource
+    batch
+    /system-property=medimage.iam.jwks-url:add(value=$jwks)
+    /system-property=medimage.iam.issuer:add(value=$issuer)
+    /system-property=medimage.token.audience:add(value=$audience)
+    run-batch
+else
+    echo ">>> Propriétés système d'api déjà présentes. Rien à faire."
+end-if

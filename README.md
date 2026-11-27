@@ -49,7 +49,13 @@ request vers `main` avec la CI au vert.
 
 ## CI/CD
 
-- CI : compilation Maven, tests unitaires et scan Gitleaks (`.github/workflows/ci.yml`).
-- CD : déploiement manuel (dev ou prod) via GitHub Actions (`.github/workflows/cd.yml`).
-- Les déclencheurs et le script de déploiement sont encore à aligner sur la convention de branches ci-dessus : voir
-  les écarts connus dans [`middleware/README.md`](middleware/README.md).
+Chaîne SecDevOps complète, détaillée dans [`docs/ci-cd.md`](docs/ci-cd.md) (schéma, correspondance consigne → job,
+protection de `main`, secrets de prod) :
+
+- CI (`.github/workflows/ci.yml`, sur toute branche et toute PR vers `main`) : compilation, tests (ArchUnit, vecteurs
+  NIST AES-GCM, budget mémoire), Gitleaks, CodeQL, revue des dépendances, SBOM CycloneDX, ShellCheck, intégrité des
+  scripts de base fournis, banc d'attaques non bloquant ;
+- CD (`.github/workflows/cd.yml`) : après une CI verte sur `main`, WildFly 42 est installé dans le runner par
+  [`scripts/`](scripts/README.md), puis déploiement, test de fumée, banc de charge et ZAP baseline ; la prod passe par
+  SSH après approbation manuelle ;
+- Dependabot (`.github/dependabot.yml`) : dépendances Maven et actions GitHub, chaque semaine.

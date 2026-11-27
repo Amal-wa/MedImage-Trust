@@ -3,8 +3,10 @@ title = "MedImage-Trust gitleaks"
 [extend]
 useDefault = true
 
+# Exception unique et nominative : le dossier de conception (PDF binaire) produit des faux positifs.
+# Tout le reste de docs/ (Markdown, schémas) reste analysé.
 [allowlist]
 description = "Faux positifs connus"
 paths = [
-  '''docs/.*''',
-] 
+  '''^docs/MedImage-Trust_v2\.6_complet\.pdf$''',
+]

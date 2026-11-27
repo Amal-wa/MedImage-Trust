@@ -5,21 +5,24 @@ import java.util.Random;
 /**
  * Fantômes synthétiques déterministes (graine fixe) : un fond bruité et un « corps » elliptique bruité.
  * Bruit uniforme borné, pour que les marges de garde soient connues exactement.
+ *
+ * <p>Public (classe, {@link Spec}, {@link Phantom}, {@link #build}, {@link #normalSpec}) pour être réutilisé tel quel par
+ * le banc d'attaques ({@code tn.medimagetrust.bench.AttackBench}), sans copie.</p>
  */
-final class Phantoms {
+public final class Phantoms {
     private Phantoms() {}
 
     static final long TEST_SEED_PHANTOM = 0x4D49_5450_4831L;
 
     /** Paramètres d'un fantôme. */
-    record Spec(int rows, int cols, int bitsStored, Photometric photometric,
+    public record Spec(int rows, int cols, int bitsStored, Photometric photometric,
                 int bgLevel, int bgNoise, int bodyLevel, int bodyNoise,
                 double centerRow, double centerCol, double semiRows, double semiCols) {}
 
     /** Image et masque du corps (vérité terrain). */
-    record Phantom(PixelImage image, boolean[] body) {}
+    public record Phantom(PixelImage image, boolean[] body) {}
 
-    static Phantom build(Spec s, long seed) {
+    public static Phantom build(Spec s, long seed) {
         Random rnd = new Random(seed);
         int max = (1 << s.bitsStored()) - 1;
         int n = s.rows() * s.cols();
@@ -42,7 +45,7 @@ final class Phantoms {
     }
 
     /** 512 × 512, 12 bits, fond sombre vers 200 (q de 40 à 60), ellipse claire vers 2000 (q de 450 à 550). */
-    static Spec normalSpec() {
+    public static Spec normalSpec() {
         return new Spec(512, 512, 12, Photometric.MONOCHROME2, 200, 40, 2000, 200, 256, 256, 150, 190);
     }
 

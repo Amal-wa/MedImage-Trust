@@ -1,0 +1,56 @@
+batch
+set pathTo=`:resolve-expression(expression=${default.path})`
+set aliasTo=`:resolve-expression(expression=${default.aliases})`
+set spaPath=`:resolve-expression(expression=${default.path}/index.html)`
+set corsRegex=`:resolve-expression(expression="regex(pattern='^(https:\\/\\/(?:.+\\.)?${default.domains}(?::\\d{1,5})?(\\/([a-zA-Z0-9\\-_?&=%.;:+]{2,})?)*)$',value=%{i,Origin},full-match=true)"`
+set escaped=\"$corsRegex\"
+/subsystem=undertow/configuration=handler/file=welcome-content:write-attribute(name=path,value=$pathTo)
+/subsystem=undertow/server=default-server/host=default-host:write-attribute(name=alias,value=[$aliasTo])
+/subsystem=undertow/configuration=filter/response-header=hsts-header:add(header-name=Strict-Transport-Security,header-value="max-age=63072000; includeSubDomains; preload")
+/subsystem=undertow/configuration=filter/rewrite=http-to-https:add(target="https://%v%U",redirect=true)
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=hsts-header:add(predicate="equals(%p,443)")
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=http-to-https:add(predicate="equals(%p,80)")
+/subsystem=undertow/configuration=filter/error-page=spa-default-router:add(code="404",path=$spaPath)
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=spa-default-router:add(predicate="true")
+/subsystem=undertow/configuration=filter/response-header=cache-control:add(header-name=Cache-Control,header-value="private,no-cache")
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=cache-control:add(predicate="true")
+/subsystem=undertow/configuration=filter/response-header=content-type-options:add(header-name=X-Content-Type-Options,header-value="nosniff")
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=content-type-options:add(predicate="true")
+# CORRECTION MedImage-Trust : « Access-Control-Allow-Origin: * » est refusé par les navigateurs avec
+# CORRECTION MedImage-Trust : « Access-Control-Allow-Credentials: true ». On renvoie l'origine exacte de la requête ;
+# CORRECTION MedImage-Trust : le filter-ref n'applique ce filtre que si l'origine correspond au motif du domaine.
+/subsystem=undertow/configuration=filter/expression-filter="Access-Control-Allow-Origin":add(expression="set(attribute='%{o,Access-Control-Allow-Origin}',value='%{i,Origin}')")
+# CORRECTION MedImage-Trust : la réponse dépend de l'origine, donc Vary: Origin (caches partagés).
+/subsystem=undertow/configuration=filter/response-header="Vary-Origin":add(header-name="Vary",header-value="Origin")
+/subsystem=undertow/configuration=filter/response-header="Access-Control-Allow-Methods":add(header-name="Access-Control-Allow-Methods",header-value="GET, POST, OPTIONS, HEAD, PUT, PATCH, DELETE")
+/subsystem=undertow/configuration=filter/response-header="Access-Control-Allow-Headers":add(header-name="Access-Control-Allow-Headers",header-value="accept, authorization, content-type, x-requested-with, if-match, if-none-match")
+/subsystem=undertow/configuration=filter/response-header="Access-Control-Expose-Headers":add(header-name="Access-Control-Expose-Headers",header-value="strict-transport-security, content-security-policy, content-type, content-encoding, date, location, last-modified, etag, link")
+/subsystem=undertow/configuration=filter/response-header="Access-Control-Allow-Credentials":add(header-name="Access-Control-Allow-Credentials",header-value="true")
+/subsystem=undertow/configuration=filter/response-header="Access-Control-Max-Age":add(header-name="Access-Control-Max-Age",header-value="1")
+/subsystem=undertow/server=default-server/host=default-host/filter-ref="Access-Control-Allow-Origin":add(predicate=$escaped)
+# CORRECTION MedImage-Trust : Vary: Origin avec la même condition que l'origine renvoyée.
+/subsystem=undertow/server=default-server/host=default-host/filter-ref="Vary-Origin":add(predicate=$escaped)
+/subsystem=undertow/server=default-server/host=default-host/filter-ref="Access-Control-Allow-Methods":add(predicate=$escaped)
+/subsystem=undertow/server=default-server/host=default-host/filter-ref="Access-Control-Allow-Headers":add(predicate=$escaped)
+/subsystem=undertow/server=default-server/host=default-host/filter-ref="Access-Control-Expose-Headers":add(predicate=$escaped)
+/subsystem=undertow/server=default-server/host=default-host/filter-ref="Access-Control-Allow-Credentials":add(predicate=$escaped)
+/subsystem=undertow/server=default-server/host=default-host/filter-ref="Access-Control-Max-Age":add(predicate=$escaped)
+# DURCISSEMENT MedImage-Trust : pas d'en-tête X-Powered-By ajouté par le moteur JSP du conteneur de servlets.
+/subsystem=undertow/servlet-container=default/setting=jsp:write-attribute(name=x-powered-by,value=false)
+run-batch
+# DURCISSEMENT MedImage-Trust : WildFly 42 n'envoie ni Server ni X-Powered-By par défaut ; les anciennes configurations
+# DURCISSEMENT MedImage-Trust : (WildFly 8 à 10) le faisaient par les filtres server-header et x-powered-by-header,
+# DURCISSEMENT MedImage-Trust : retirés ici s'ils existent. Le test de fumée de deploy.sh vérifie l'absence des deux.
+if (outcome == success) of /subsystem=undertow/server=default-server/host=default-host/filter-ref=server-header:read-resource
+    /subsystem=undertow/server=default-server/host=default-host/filter-ref=server-header:remove
+end-if
+if (outcome == success) of /subsystem=undertow/server=default-server/host=default-host/filter-ref=x-powered-by-header:read-resource
+    /subsystem=undertow/server=default-server/host=default-host/filter-ref=x-powered-by-header:remove
+end-if
+if (outcome == success) of /subsystem=undertow/configuration=filter/response-header=server-header:read-resource
+    /subsystem=undertow/configuration=filter/response-header=server-header:remove
+end-if
+if (outcome == success) of /subsystem=undertow/configuration=filter/response-header=x-powered-by-header:read-resource
+    /subsystem=undertow/configuration=filter/response-header=x-powered-by-header:remove
+end-if
+reload

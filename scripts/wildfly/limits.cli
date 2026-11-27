@@ -1,0 +1,18 @@
+# Cloisonnement des ressources (consigne 5.3 b ; dossier v2.6 §6.2, §7.3, SEC08, SEC-F02, SEC-F04).
+# Valeurs dans <env>.properties :
+#   limits.max-post-size : 81 Mio (fichier de 80 Mio accepté, 81 Mio rejeté) ;
+#   limits.read-timeout  : 120 s (délai d'upload) ;
+#   pool medimage-imaging : 4 fils, file de 20, délai de traitement de 30 s, pour le futur endpoint d'émission.
+# Les valeurs passent par « set …=`:resolve-expression(…)` », comme dans les scripts fournis.
+set maxPost=`:resolve-expression(expression="${limits.max-post-size}")`
+set readTimeout=`:resolve-expression(expression="${limits.read-timeout}")`
+set threads=`:resolve-expression(expression="${limits.imaging.threads}")`
+set queue=`:resolve-expression(expression="${limits.imaging.queue}")`
+set hung=`:resolve-expression(expression="${limits.imaging.hung-task-threshold}")`
+/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=max-post-size,value=$maxPost)
+/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=read-timeout,value=$readTimeout)
+if (outcome != success) of /subsystem=ee/managed-executor-service=medimage-imaging:read-resource
+    /subsystem=ee/managed-executor-service=medimage-imaging:add(jndi-name=java:jboss/ee/concurrency/executor/medimage-imaging,context-service=default,core-threads=$threads,max-threads=$threads,queue-length=$queue,hung-task-threshold=$hung)
+else
+    echo ">>> Pool medimage-imaging déjà présent. Rien à faire."
+end-if
