@@ -16,7 +16,7 @@ Le PDF v2.3 est obsolète.
 
 | Dossier | Contenu |
 |---|---|
-| `backend/` | API Java, Maven multi-modules (voir [`backend/README.md`](backend/README.md)) |
+| `middleware/` | serveur Java, trois modules Maven : `core` (commun), `api` (tout le code développé, `api-1.0.war`), `iam` (identités et accès, `iam-1.0.war`) ; voir [`middleware/README.md`](middleware/README.md) |
 | `frontend/` | application PWA (à venir) |
 | `docs/` | dossier de conception (v2.4) et diagrammes UML |
 | `scripts/` | scripts de déploiement WildFly (à venir) |
@@ -30,24 +30,26 @@ Le PDF v2.3 est obsolète.
 ## Construire et tester
 
 ```
-cd backend
-mvn -B clean test        # compile et teste tous les modules
-mvn -B -DskipTests package   # produit le WAR de l'API : medimage-web/target/medimage-api-1.0.war
+cd middleware
+mvn -B clean verify          # compile, teste (tests ArchUnit compris) et produit les deux WAR
+mvn -B -DskipTests package   # produit api/target/api-1.0.war et iam/target/iam-1.0.war
 ```
 
 ## Branches
 
+`main` est la branche de travail suivie par l'enseignant. Toute modification passe par une branche, puis par une pull
+request vers `main` avec la CI au vert.
+
 | Branche | Usage |
 |---|---|
-| `main` | versions livrées, protégée |
-| `develop` | intégration : toutes les branches de travail y sont fusionnées |
-| `feat/<module>` | nouvelle fonctionnalité d'un module (ex. `feat/embedding`) |
+| `main` | branche de travail suivie par l'enseignant, protégée |
+| `feat/<sujet>` | nouvelle fonctionnalité (ex. `feat/embedding`) |
 | `fix/<sujet>` | correction |
-| `chore/<sujet>` | organisation, outillage, documentation (ex. `chore/harmonisation`) |
+| `chore/<sujet>` | organisation, outillage, documentation (ex. `chore/middleware-structure`) |
 
 ## CI/CD
 
 - CI : compilation Maven, tests unitaires et scan Gitleaks (`.github/workflows/ci.yml`).
 - CD : déploiement manuel (dev ou prod) via GitHub Actions (`.github/workflows/cd.yml`).
 - Les déclencheurs et le script de déploiement sont encore à aligner sur la convention de branches ci-dessus : voir
-  les écarts connus dans [`backend/README.md`](backend/README.md).
+  les écarts connus dans [`middleware/README.md`](middleware/README.md).

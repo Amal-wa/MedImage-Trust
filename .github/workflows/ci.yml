@@ -21,12 +21,12 @@ jobs:
           java-version: '25'
           cache: maven
       - name: Compilation et tests unitaires
-        run: mvn -B -f backend/pom.xml verify
+        run: mvn -B -f middleware/pom.xml verify
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: rapports-tests
-          path: '**/target/surefire-reports'
+          path: 'middleware/**/target/surefire-reports'
 
   gitleaks:
     name: gitleaks

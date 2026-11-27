@@ -25,6 +25,6 @@ jobs:
           java-version: '25'
           cache: maven
       - name: Build du WAR
-        run: mvn -B -f backend/pom.xml -DskipTests package
+        run: mvn -B -f middleware/pom.xml -DskipTests package
       - name: Déploiement (à compléter avec WildFly)
         run: ./scripts/deploy.sh ${{ inputs.environment }}
