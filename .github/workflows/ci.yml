@@ -56,15 +56,15 @@ jobs:
           path: middleware/*/target/surefire-reports/
           retention-days: 14
 
-  cours:
-    name: scripts du cours intacts
+  fournis:
+    name: scripts de base fournis intacts
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v7
-      - name: Sommes SHA-256 de scripts/wildfly/cours/
-        run: bash scripts/check-cours.sh
+      - name: Sommes SHA-256 de scripts/wildfly/fournis/
+        run: bash scripts/check-fournis.sh
 
   gitleaks:
     name: gitleaks (secrets dans tout l'historique)

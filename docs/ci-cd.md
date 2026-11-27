@@ -8,7 +8,7 @@ flowchart LR
 
     subgraph CI["ci.yml"]
         build["build<br/>clean verify : tests, ArchUnit,<br/>vecteurs NIST, puis tag memory"]
-        cours["cours<br/>check-cours.sh"]
+        fournis["fournis<br/>check-fournis.sh"]
         gitleaks["gitleaks<br/>tout l'historique"]
         codeql["CodeQL<br/>security-extended"]
         depr["dependency-review<br/>(PR seulement)"]
@@ -41,7 +41,7 @@ flowchart LR
 | Nomenclature logicielle | `sbom` (CycloneDX 2.9.3, agrégée, artefact `sbom-cyclonedx`) | oui |
 | Scripts shell propres | `shellcheck` (tous les `scripts/**/*.sh`) | oui |
 | Workflows GitHub Actions valides | `actionlint` (binaire officiel `rhysd/actionlint` 1.7.12, somme SHA-256 épinglée dans `ci.yml` ; analyse aussi les blocs `run:` avec ShellCheck) | oui |
-| Scripts de l'enseignant intacts | `cours` (`scripts/check-cours.sh`, sommes SHA-256 de `scripts/wildfly/cours/`) | oui |
+| Scripts de base fournis intacts | `fournis` (`scripts/check-fournis.sh`, sommes SHA-256 de `scripts/wildfly/fournis/`) | oui |
 | Robustesse du marquage (consigne 4.6) : JPEG Q75 en 8 et 12 bits, redimensionnement 75 %, PSNR, faux positifs | `attack-bench` (`AttackBench`, artefact `banc-attaques`, rapport dans le résumé) | non (`continue-on-error`) ; le programme échoue si PSNR < 40 dB ou faux positifs > 1 % |
 | Déploiement reproductible de WildFly 42 (hôtes virtuels, TLS 1.3, limites) | `cd.yml` › `deploy-dev` : `install-wildfly.sh dev` | oui |
 | Test de fumée (santé, en-têtes, HTTPS, TLS 1.2 refusé, 401 problem+json) | `deploy-dev` : `deploy.sh dev` | oui ; `/api/whoami` en 404 n'est qu'un avertissement jusqu'au prompt 12 |
@@ -100,7 +100,7 @@ Settings › Branches › Add branch ruleset (ou « branch protection rule ») s
 
 1. Require a pull request before merging, avec au moins une approbation et « Require review from Code Owners »
    (`.github/CODEOWNERS`).
-2. Require status checks to pass : `build (compilation, tests, ArchUnit)`, `scripts du cours intacts`,
+2. Require status checks to pass : `build (compilation, tests, ArchUnit)`, `scripts de base fournis intacts`,
    `gitleaks (secrets dans tout l'historique)`, `CodeQL (Java)`, `revue des dépendances (PR)`, `SBOM CycloneDX`,
    `ShellCheck`, `actionlint` ; cocher « Require branches to be up to date ». Le banc d'attaques n'en fait pas partie.
 3. Block force pushes ; Restrict deletions ; Require linear history (facultatif).

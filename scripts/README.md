@@ -15,7 +15,7 @@ WildFly 42 sert lui-même la PWA et les deux WAR par des hôtes virtuels Underto
 
 | Fichier | Rôle |
 |---|---|
-| `wildfly/cours/*.cli` | les trois scripts de l'enseignant, **jamais modifiés** (sommes figées dans `wildfly/cours.sha256`) |
+| `wildfly/fournis/*.cli` | les trois scripts de base fournis par l'enseignant, **jamais modifiés** (sommes figées dans `wildfly/fournis.sha256`) |
 | `wildfly/default-host.cli`, `add-host.cli`, `add-api.cli` | nos copies, avec une seule correction (CORS avec cookies) : voir [`wildfly/MODIFICATIONS.md`](wildfly/MODIFICATIONS.md) |
 | `wildfly/tls.cli` | magasin PKCS#12, gestionnaire de clés et `server-ssl-context` Elytron, **TLSv1.3 seulement**, sur l'écouteur HTTPS |
 | `wildfly/limits.cli` | `max-post-size` (81 Mio) et `read-timeout` (120 s) de l'écouteur HTTPS ; pool `medimage-imaging` (4 fils, file de 20, délai de 30 s) |
@@ -26,7 +26,7 @@ WildFly 42 sert lui-même la PWA et les deux WAR par des hôtes virtuels Underto
 | `install-wildfly.sh <env>` | installation et configuration complète |
 | `deploy.sh <env>` | déploiement des WAR et de la PWA, rechargement, test de fumée |
 | `update-wildfly.sh <env>` | mise à jour automatique de WildFly, avec retour arrière |
-| `check-cours.sh` | échoue si un script de `wildfly/cours/` a changé (CI) |
+| `check-fournis.sh` | échoue si un script de `wildfly/fournis/` a changé (CI) |
 
 Les valeurs de `limits.cli` viennent du dossier v2.6 : plafond de fichier de 80 Mio et fichier de 81 Mio rejeté
 (§6.2, SEC-F02) ; délai d'upload de 120 s (§6.2) ; pool borné à 4 fils avec file de 20 (§7.3, SEC08) ; délai de
@@ -46,8 +46,8 @@ scripts/update-wildfly.sh dev      # quand une nouvelle version de WildFly sort
 2. dev : génère un certificat autosigné EC P-256 pour `*.medimage.localhost` avec `keytool` (le rôle que tient mkcert
    sur un poste), et exporte `tls/medimage-dev.crt` (curl) et `tls/truststore.p12` (Java) ; prod : convertit le
    certificat Let's Encrypt en PKCS#12 ;
-3. ajoute à `bin/standalone.conf` : `-Djdk.tls.server.enableStatusRequestExtension=true` (OCSP stapling, cours séance
-   3), `-Djboss.http.port=80` et `-Djboss.https.port=443` ;
+3. ajoute à `bin/standalone.conf` : `-Djdk.tls.server.enableStatusRequestExtension=true` (OCSP stapling, séance 3
+   de l'enseignant), `-Djboss.http.port=80` et `-Djboss.https.port=443` ;
 4. démarre WildFly, puis applique `tls.cli`, `limits.cli`, `default-host.cli`, `add-host.cli` (admin),
    `add-api.cli` (api), `add-api.cli` (iam, propriétés `iam.api.*`), `api-properties.cli`, et recharge.
 
@@ -72,7 +72,7 @@ Journal : `/opt/medimage/logs/update-wildfly.log`.
 
 ## Ports 80 et 443 sans root
 
-Les prédicats des `.cli` du cours testent `%p` (port local) égal à 80 ou 443 : WildFly doit écouter directement sur
+Les prédicats des `.cli` fournis testent `%p` (port local) égal à 80 ou 443 : WildFly doit écouter directement sur
 ces ports (une redirection 8443 → 443 par iptables laisserait `%p = 8443`). Choix retenu : **`setcap
 cap_net_bind_service=+ep` sur le binaire `java`**, plutôt que `sudo`. WildFly tourne alors avec l'utilisateur du
 service, sans aucun autre privilège ; avec `sudo`, tout le serveur d'application (et les WAR) tournerait en root.
@@ -138,5 +138,5 @@ navigateur pour éviter l'avertissement.
 - Le mot de passe du magasin TLS est généré par `install-wildfly.sh` (`/opt/medimage/tls/keystore.pass`, mode 600) et
   écrit en clair dans `standalone.xml` par la référence d'identifiant Elytron. Amélioration possible : un credential
   store Elytron, comme pour la KEK.
-- `default-host.cli` (cours) n'est pas idempotent : `install-wildfly.sh` part toujours d'une installation neuve.
+- `default-host.cli` (script fourni) n'est pas idempotent : `install-wildfly.sh` part toujours d'une installation neuve.
 - WildFly est lancé par `nohup` (runner, poste de dev) ; en prod, préférer un service systemd.

@@ -3,7 +3,7 @@
 #   limits.max-post-size : 81 Mio (fichier de 80 Mio accepté, 81 Mio rejeté) ;
 #   limits.read-timeout  : 120 s (délai d'upload) ;
 #   pool medimage-imaging : 4 fils, file de 20, délai de traitement de 30 s, pour le futur endpoint d'émission.
-# Les valeurs passent par « set …=`:resolve-expression(…)` », comme dans les scripts du cours.
+# Les valeurs passent par « set …=`:resolve-expression(…)` », comme dans les scripts fournis.
 set maxPost=`:resolve-expression(expression="${limits.max-post-size}")`
 set readTimeout=`:resolve-expression(expression="${limits.read-timeout}")`
 set threads=`:resolve-expression(expression="${limits.imaging.threads}")`

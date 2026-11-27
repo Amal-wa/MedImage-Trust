@@ -1,6 +1,6 @@
 # Propriétés système lues par api pour vérifier les jetons émis par iam (prompt 12).
 # Valeurs dans <env>.properties : medimage.iam.jwks-url, medimage.iam.issuer, medimage.token.audience.
-# Les valeurs passent par « set …=`:resolve-expression(…)` », comme dans les scripts du cours.
+# Les valeurs passent par « set …=`:resolve-expression(…)` », comme dans les scripts fournis.
 set jwks=`:resolve-expression(expression="${medimage.iam.jwks-url}")`
 set issuer=`:resolve-expression(expression="${medimage.iam.issuer}")`
 set audience=`:resolve-expression(expression="${medimage.token.audience}")`

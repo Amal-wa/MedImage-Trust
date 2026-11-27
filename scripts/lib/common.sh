@@ -193,7 +193,7 @@ configure_wildfly() {
 }
 
 # Ajoute à bin/standalone.conf de l'instance $1 les options JVM du projet (une seule fois).
-# - jdk.tls.server.enableStatusRequestExtension=true : OCSP stapling (cours, séance 3) ;
+# - jdk.tls.server.enableStatusRequestExtension=true : OCSP stapling (séance 3 de l'enseignant) ;
 # - jboss.http.port=80, jboss.https.port=443 : les prédicats des .cli testent %p = 80 ou 443.
 tune_standalone_conf() {
     local conf="$1/bin/standalone.conf"
