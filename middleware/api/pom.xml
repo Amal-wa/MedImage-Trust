@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>tn.medimage</groupId>
+    <artifactId>medimage-middleware</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>medimage-api</artifactId>
+  <packaging>war</packaging>
+  <name>MedImage-Trust :: api (crypto, embedding, fingerprint, watermark, audit, REST)</name>
+
+  <properties>
+    <!-- Nom du WAR attendu par le script add-api.cli : ${api.name}-${api.version}.war -->
+    <api.name>api</api.name>
+    <api.version>1.0</api.version>
+    <!-- Le test de budget mémoire (36 Mpx, tag « memory ») est exclu de mvn -B test par défaut. -->
+    <api.excludedGroups>memory</api.excludedGroups>
+  </properties>
+
+  <!--
+    Dépendances fusionnées des six anciens modules (crypto, embedding, fingerprint, watermark, audit, web).
+    Les dépendances internes (fingerprint → crypto, etc.) n'existent plus : c'est le même module ; les frontières
+    entre packages sont gardées par ArchitectureTest (ArchUnit).
+  -->
+  <dependencies>
+    <dependency>
+      <groupId>tn.medimage</groupId>
+      <artifactId>medimage-core</artifactId>
+      <!-- compile : embarqué dans WEB-INF/lib -->
+    </dependency>
+    <dependency>
+      <groupId>jakarta.platform</groupId>
+      <artifactId>jakarta.jakartaee-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>${api.name}-${api.version}</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-war-plugin</artifactId>
+        <configuration>
+          <failOnMissingWebXml>false</failOnMissingWebXml>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <excludedGroups>${api.excludedGroups}</excludedGroups>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <!-- Simulation de collusions (SEC-D04) : outil de CI dans les sources de test, absent du WAR. -->
+        <configuration>
+          <mainClass>tn.medimagetrust.fingerprint.SimulationMain</mainClass>
+          <classpathScope>test</classpathScope>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!--
+      Avec -Dgroups=… (par exemple -Dgroups=memory -DargLine=-Xmx300m), l'exclusion par défaut est levée :
+      seuls les tags demandés s'exécutent.
+    -->
+    <profile>
+      <id>groupes-explicites</id>
+      <activation>
+        <property>
+          <name>groups</name>
+        </property>
+      </activation>
+      <properties>
+        <api.excludedGroups>aucun-groupe-exclu</api.excludedGroups>
+      </properties>
+    </profile>
+  </profiles>
+</project>
