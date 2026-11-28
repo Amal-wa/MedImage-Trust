@@ -45,6 +45,7 @@ flowchart LR
 | Workflows GitHub Actions valides | `actionlint` (binaire officiel `rhysd/actionlint` 1.7.12, somme SHA-256 épinglée dans `ci.yml` ; analyse aussi les blocs `run:` avec ShellCheck) | oui |
 | Scripts de base fournis intacts | `fournis` (`scripts/check-fournis.sh`, sommes SHA-256 de `scripts/wildfly/fournis/`) | oui |
 | Banc de robustesse (SEC-D04) : JPEG Q75 en 8 et 12 bits, redimensionnement 75 %, attribution, PSNR, faux positifs | `attack-bench` (`AttackBench`, artefact `banc-attaques`, rapport dans le résumé) | oui : vrai destinataire accusé dans toutes les copies de chaque scénario, faux positifs ≤ 1 %, PSNR ≥ 40 dB ; bits F < 95 % : avertissement seulement |
+| Corpus réel (docs/CORPUS.md) : lecture sûre, marquage, copie relue, aucun `.dcm` dans le dépôt | `corpus` : `scripts/corpus/fetch-corpus.sh` (API publique TCIA, SHA-256 vérifiées, cache `actions/cache` indexé par la SHA-256 de `docs/CORPUS.md`), puis tests `-Dgroups=corpus` ; banc « Corpus réel » en fin de job, artefact `corpus-reel` | oui pour le téléchargement et les tests ; section « Corpus réel » du banc : non bloquante (`continue-on-error`) |
 | Déploiement reproductible de WildFly 42 (hôtes virtuels, TLS 1.3, limites) | `cd.yml` › `deploy-dev` : `install-wildfly.sh dev` | oui |
 | Test de fumée (santé, en-têtes, HTTPS, TLS 1.2 refusé, 401 problem+json) | `deploy-dev` : `deploy.sh dev` | oui ; `/api/whoami` en 404 n'est qu'un avertissement jusqu'au prompt 12 |
 | Objectif SRE : p95 < 2 s (SEC-R02), aucune requête suspendue > 10 s | `deploy-dev` : `LoadBench` (500 + 200 requêtes à 20 en parallèle, rafale de 200), tas du serveur avant et après | oui |
@@ -72,11 +73,11 @@ exige avant de lire `skip`), et seul api le réactive.
 Maven Central limite le débit des clients (réponses `429 Too Many Requests`). Les mesures suivantes réduisent le
 nombre de requêtes sans affaiblir l'intégrité des artefacts.
 
-- **Cache** : chaque job qui lance Maven (`build`, `sbom`, `attack-bench`, `deploy-dev`, `deploy-prod`) utilise
+- **Cache** : chaque job qui lance Maven (`build`, `sbom`, `attack-bench`, `corpus`, `deploy-dev`, `deploy-prod`) utilise
   `actions/setup-java` avec `cache: maven`. La clé est le condensat de tous les `pom.xml` (comportement par défaut de
   setup-java) ; le cache est restauré au début du job et enregistré à la fin s'il n'existait pas.
 - **Un seul enregistrement par clé** : setup-java n'enregistre le cache que pour le premier job terminé avec cette clé.
-  `sbom` et `attack-bench` dépendent donc de `build` (`needs: build`) : ils restaurent le cache complet de `build`
+  `sbom`, `attack-bench` et `corpus` dépendent donc de `build` (`needs: build`) : ils restaurent le cache complet de `build`
   au lieu d'en enregistrer un partiel. Déclarer le plugin CycloneDX dans le `pluginManagement` épingle sa version et
   permet le préfixe court `cyclonedx:makeAggregateBom`.
 - **Plugins hors de `verify`** : `verify` ne charge ni `exec-maven-plugin` (bancs) ni `cyclonedx-maven-plugin`
@@ -148,6 +149,19 @@ destinataire est accusé dans toutes les copies de chaque scénario (sans attaqu
 8 et en 12 bits), faux positifs ≤ 1 %, PSNR ≥ 40 dB. Une récupération des bits F sous 95 % produit un avertissement
 (`::warning::`), non bloquant : le code de Tardos tolère une part de bits erronés, et c'est l'attribution qui décide.
 JPEG Q75 laisse environ 70 % des bits F en 8 comme en 12 bits : l'avertissement reste attendu pour ce scénario.
+
+**Corpus réel (prompt 10).** Section « Corpus réel » du rapport, exécutée si `MEDIMAGE_CORPUS_DIR` est défini (job
+`corpus`), non bloquante : 5 copies par fichier marquable, JPEG Q75 et redimensionnement à 75 %, B du registre, plus le
+compte des refus `MASK_UNSTABLE` (décision sur `T_SEARCH`). Les critères proposés pour la rendre bloquante figurent
+dans le rapport ; ils ne sont pas appliqués.
+
+**Correction du banc : redimensionnement d'une copie signée.** L'attaque décalait une copie signée de 32 768 avant
+le redimensionnement Java 2D (raster `TYPE_USHORT_GRAY`). L'interpolation bilinéaire de Java 2D est fausse quand des
+valeurs voisines passent de part et d'autre de 32 768 : sur une copie signée à fond nul (scanner réel, fantôme à fond
+à 0), environ 50 % des bits F relus et aucune attribution, alors que la même copie, décalée de 4 096 ou de 40 000,
+garde 99,7 % des bits. L'échec venait du banc. Le décalage est maintenant choisi d'après la plage de la copie
+(`AttackBench.resizeOffset`) : nul pour une image dans `[0, 32 767]` (fantômes 8 et 12 bits : rapport identique
+octet pour octet), sinon la plus petite valeur est placée à 32 768. Test : `AttackBenchResizeTest`.
 
 ## ZAP baseline : règles ignorées
 

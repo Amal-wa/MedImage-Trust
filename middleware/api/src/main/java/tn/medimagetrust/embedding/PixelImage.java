@@ -105,6 +105,79 @@ public final class PixelImage {
     }
 
     /**
+     * Rédacteur à usage unique qui remplit les pixels d'une image en construction ({@link #filled}). Il n'écrit que
+     * pendant l'appel du remplisseur : toute écriture après la construction de l'image est refusée.
+     */
+    public static final class PixelWriter {
+        private final char[] target;
+        private final boolean signed;
+        private final int min;
+        private final int max;
+        private boolean closed;
+
+        private PixelWriter(char[] target, boolean signed, int min, int max) {
+            this.target = target;
+            this.signed = signed;
+            this.min = min;
+            this.max = max;
+        }
+
+        /** Nombre de pixels à écrire. */
+        public int length() {
+            return target.length;
+        }
+
+        /**
+         * Écrit la valeur du pixel d'indice raster {@code index}.
+         *
+         * @throws EmbeddingException {@code INVALID_INPUT} si l'indice ou la valeur sort de la plage, ou si l'image
+         *                            est déjà construite
+         */
+        public void put(int index, int value) {
+            if (closed || index < 0 || index >= target.length || value < min || value > max) {
+                throw new EmbeddingException(INVALID_INPUT);
+            }
+            target[index] = encode(value, signed);
+        }
+    }
+
+    /** Remplisseur de pixels, appelé une fois par {@link #filled}. */
+    @FunctionalInterface
+    public interface PixelFiller<E extends Exception> {
+        /** Écrit les {@code writer.length()} pixels ; ne conserve pas {@code writer} après le retour. */
+        void fill(PixelWriter writer) throws E;
+    }
+
+    /**
+     * Image remplie en flux, sans copie pleine taille : les dimensions sont contrôlées avant toute allocation
+     * ({@link EmbeddingLimits#checkDimensions(int, int, int)}), puis le tableau de l'image est alloué et rempli par
+     * {@code filler}, valeur par valeur (lecture d'un fichier DICOM par le module dicom). Image non signée : chaque
+     * valeur dans {@code [0, 2^bitsStored − 1]} ; copie signée relue : chaque valeur dans {@code [−32 768, 32 767]},
+     * {@code bitsStored} étant alors la profondeur B du registre.
+     *
+     * @throws EmbeddingException {@code IMAGE_TOO_LARGE} ou {@code INVALID_INPUT}
+     * @throws E                  l'exception du remplisseur (lecture du flux)
+     */
+    public static <E extends Exception> PixelImage filled(int rows, int cols, int bitsStored, Photometric photometric,
+                                                          boolean signed, boolean burnedInAnnotation,
+                                                          boolean overlayPresent, PixelFiller<E> filler) throws E {
+        EmbeddingLimits.checkDimensions(rows, cols, bitsStored);
+        if (photometric == null || filler == null) {
+            throw new EmbeddingException(INVALID_INPUT);
+        }
+        char[] owned = new char[rows * cols];
+        PixelWriter writer = signed ? new PixelWriter(owned, true, SIGNED_MIN, SIGNED_MAX)
+                : new PixelWriter(owned, false, 0, (1 << bitsStored) - 1);
+        try {
+            filler.fill(writer);
+        } finally {
+            writer.closed = true;
+        }
+        return new PixelImage(rows, cols, bitsStored, photometric, owned, burnedInAnnotation, overlayPresent, signed,
+                null);
+    }
+
+    /**
      * Copie signée relue ({@code PixelRepresentation = 1}), par exemple par le module dicom.
      *
      * @param bitsStored profondeur effective B de l'émission, lue dans le registre (jamais dans la copie)

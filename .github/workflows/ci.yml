@@ -209,3 +209,51 @@ jobs:
           name: banc-attaques
           path: middleware/api/target/bench/
           if-no-files-found: warn
+
+  corpus:
+    name: corpus réel (lecture, marquage, copie)
+    needs: build
+    runs-on: ubuntu-latest
+    # Bloquant : chaque fichier de docs/CORPUS.md est téléchargé (API publique TCIA) et vérifié par sa SHA-256, puis
+    # les tests @Tag("corpus") le lisent, le marquent s'il est marquable, écrivent et relisent la copie. Les fichiers
+    # restent hors du dépôt ; le cache est indexé par la SHA-256 du manifeste : tout changement du tableau le renouvelle.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Dossier du corpus, hors du dépôt
+        run: echo "MEDIMAGE_CORPUS_DIR=$RUNNER_TEMP/medimage-corpus" >> "$GITHUB_ENV"
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/medimage-corpus
+          key: corpus-${{ hashFiles('docs/CORPUS.md') }}
+      - name: Téléchargement si nécessaire et vérification des SHA-256
+        # Fichier présent et somme conforme : rien n'est téléchargé. Somme différente : fichier supprimé, échec.
+        run: bash scripts/corpus/fetch-corpus.sh
+      - name: Tests du corpus (tag corpus)
+        run: mvn -B -f middleware/pom.xml -pl api -am verify -Dgroups=corpus
+      - name: Banc, section « Corpus réel » (non bloquant)
+        continue-on-error: true
+        run: mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java@attack-bench -Dbench.copies=20
+      - name: Rapports dans le résumé
+        if: always()
+        run: |
+          if [[ -f middleware/api/target/corpus/corpus-report.md ]]; then
+            { echo "## Corpus réel : lecture et copies"; echo; cat middleware/api/target/corpus/corpus-report.md; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -f middleware/api/target/bench/report.md ]]; then
+            sed -n '/^## Corpus réel/,$p' middleware/api/target/bench/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: corpus-reel
+          path: |
+            middleware/api/target/corpus/
+            middleware/api/target/bench/
+          if-no-files-found: warn

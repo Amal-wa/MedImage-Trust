@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.function.IntUnaryOperator;
+import java.util.function.LongFunction;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
@@ -55,13 +56,17 @@ import tn.medimagetrust.fingerprint.TardosCodeGenerator;
  *
  * <p>L'extraction reçoit la profondeur effective B enregistrée à l'émission ({@code EmbeddingResult.bitsStored()}),
  * comme le fera le registre : {@code FBlockReader.of(copie, partitions, B)}. Δ n'est jamais lu dans la copie attaquée.
- * Une copie produite en mode signé est attaquée dans son domaine signé (décalage de 32 768 pour le redimensionnement ;
- * fenêtre fixe {@code [0, 2^B − 1]} pour le JPEG, comme un visualiseur).</p>
+ * Une copie produite en mode signé est attaquée dans son domaine signé (décalage qui garde toutes les valeurs du même
+ * côté de 32 768 pour le redimensionnement, voir {@link #resizeOffset} ; fenêtre fixe {@code [0, 2^B − 1]} pour le
+ * JPEG, comme un visualiseur).</p>
  *
  * <p>Critères d'acceptation bloquants : vrai destinataire accusé dans toutes les copies de chaque scénario (sans
  * attaque, JPEG Q75, redimensionnement à 75 %, en 8 et en 12 bits), faux positifs ≤ 1 %, PSNR ≥ 40 dB. Le programme
  * sort avec le code 1 si l'un d'eux n'est pas tenu. Une récupération des bits F sous 95 % produit un avertissement
  * GitHub ({@code ::warning::}) sans échec.</p>
+ *
+ * <p>Section « Corpus réel » ({@link CorpusBench}), non bloquante : exécutée si {@code MEDIMAGE_CORPUS_DIR} est
+ * défini, N copies par fichier marquable ({@code -Dbench.corpus.copies=N}, 5 par défaut).</p>
  *
  * <p>Lancement : {@code mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java@attack-bench}
  * (dans le réacteur, sans installation) ; rapport dans {@code middleware/api/target/bench/report.md} et
@@ -146,8 +151,15 @@ public final class AttackBench {
                 new Phantoms.Spec(512, 512, 8, Photometric.MONOCHROME2, 30, 3, 153, 12, 256, 256, 150, 190),
                 copies, service, embedder, generator, recipients));
 
+        // Corpus réel : non bloquant, hors du code de sortie.
+        int corpusCopies = Integer.getInteger("bench.corpus.copies", 5);
+        if (corpusCopies < 1) throw new IllegalArgumentException("bench.corpus.copies doit être >= 1");
+        Path manifest = Path.of(args.length > 1 ? args[1] : "../../docs/CORPUS.md");
+        Optional<CorpusBench.Section> corpus = CorpusBench.run(manifest, corpusCopies, service, embedder, generator,
+                recipients);
+
         Files.createDirectories(out);
-        String md = markdown(results, copies);
+        String md = markdown(results, copies) + CorpusBench.markdown(corpus);
         Files.writeString(out.resolve("report.md"), md, StandardCharsets.UTF_8);
         Files.writeString(out.resolve("report.json"), json(results, copies), StandardCharsets.UTF_8);
         System.out.println(md);
@@ -213,12 +225,25 @@ public final class AttackBench {
     static PhantomResult run(String name, Phantoms.Spec spec, int copies, FingerprintService service,
                              FingerprintEmbedder embedder, TardosCodeGenerator generator, List<String> recipients,
                              IntUnaryOperator extractionBits) {
+        return runImages(name, spec.bitsStored(), TEST_SEED_BENCH, seed -> Phantoms.build(spec, seed).image(), copies,
+                service, embedder, generator, recipients, extractionBits);
+    }
+
+    /**
+     * Boucle du banc sur des originaux donnés : {@code originalFor} reçoit la graine de la copie (fantôme construit
+     * avec cette graine ; image du corpus réel, identique pour toutes les copies). La graine de la copie {@code i} est
+     * {@code seedBase + 1000 i + B}.
+     */
+    static PhantomResult runImages(String name, int bitsStored, long seedBase, LongFunction<PixelImage> originalFor,
+                                   int copies, FingerprintService service, FingerprintEmbedder embedder,
+                                   TardosCodeGenerator generator, List<String> recipients,
+                                   IntUnaryOperator extractionBits) {
         PhantomResult result = new PhantomResult(name);
-        result.qimDelta = EmbeddingProfile.qimDelta(spec.bitsStored());
+        result.qimDelta = EmbeddingProfile.qimDelta(bitsStored);
         for (int i = 0; i < copies; i++) {
-            long seed = TEST_SEED_BENCH + 1000L * i + spec.bitsStored();
+            long seed = seedBase + 1000L * i + bitsStored;
             Random rnd = new Random(seed);
-            PixelImage original = Phantoms.build(spec, seed).image();
+            PixelImage original = originalFor.apply(seed);
             byte[] imageId = id(seed);
             byte[] emissionId = id(seed ^ 0x5A5A5A5AL);
             String recipient = recipients.get(i % recipients.size());
@@ -338,7 +363,7 @@ public final class AttackBench {
     static int[] resize(PixelImage img) {
         int rows = img.rows();
         int cols = img.cols();
-        int offset = img.signed() ? 32_768 : 0;
+        int offset = resizeOffset(img);
         BufferedImage src = new BufferedImage(cols, rows, BufferedImage.TYPE_USHORT_GRAY);
         WritableRaster sr = src.getRaster();
         for (int r = 0; r < rows; r++) {
@@ -361,6 +386,32 @@ public final class AttackBench {
     }
 
     // --- Outils --------------------------------------------------------------------------------------------------
+
+    /**
+     * Décalage appliqué avant le redimensionnement Java 2D ({@code TYPE_USHORT_GRAY}). L'interpolation bilinéaire de
+     * Java 2D sur un raster 16 bits non signé est fausse quand des valeurs voisines passent de part et d'autre de
+     * 32 768 (le bit de poids fort est traité comme un signe) : toutes les valeurs décalées doivent rester du même côté.
+     * Image dans {@code [0, 32 767]} : décalage nul (comportement inchangé pour les fantômes 8 et 12 bits) ; sinon
+     * (copie signée, ou valeurs au-delà de 32 767), la plus petite valeur est placée à 32 768.
+     *
+     * @throws IllegalStateException si la plage de l'image dépasse 32 767 niveaux (aucun décalage ne convient)
+     */
+    static int resizeOffset(PixelImage img) {
+        int min = Integer.MAX_VALUE;
+        int max = Integer.MIN_VALUE;
+        for (int i = 0; i < img.pixelCount(); i++) {
+            int v = img.pixel(i);
+            min = Math.min(min, v);
+            max = Math.max(max, v);
+        }
+        if (min >= 0 && max <= Short.MAX_VALUE) {
+            return 0;
+        }
+        if (max - min > Short.MAX_VALUE) {
+            throw new IllegalStateException("plage trop large pour le redimensionnement Java 2D");
+        }
+        return 32_768 - min;
+    }
 
     /**
      * Copie attaquée de mêmes attributs que {@code like} : non signée si toutes les valeurs tiennent dans

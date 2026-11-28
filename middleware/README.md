@@ -14,25 +14,26 @@ middleware/
 │   ├── src/main/java/tn/medimagetrust/
 │   │   ├── crypto/          Nour     SHA-256, HMAC, HKDF, AES-GCM, Ed25519, JCS : seul package qui manipule des clés
 │   │   ├── embedding/       Amel     RONI (profil 3), partitions W/S/F, QIM sur DCT pour F au pas Δ(B), LSB pour S et W, contrôle final
+│   │   ├── dicom/           Amel     lecture sûre (dcm4che, échec fermé, délai de 30 s), écriture de la copie reconstruite
+│   │   ├── stego/           Amel     jeton S : référence de dossier chiffrée (crypto.sealTokenS) dans la partition S
 │   │   ├── fingerprint/     Nourhen  code de Tardos : génération, insertion, analyse des fuites
 │   │   ├── watermark/       Nour     preuve W : charge MIT-W-v1 de 208 octets signée Ed25519, vérification en échec fermé
 │   │   ├── audit/           Nourhen  journal d'audit chaîné, ancrage quotidien signé, alertes A1 à A7, rétention
 │   │   └── api/rest/        Nour     RestApplication (@ApplicationPath("/api")), HealthResource
 │   ├── src/test/java/tn/medimagetrust/…   tous les tests, mêmes packages ; ArchitectureTest (ArchUnit)
-│   └── docs/        crypto.md, embedding.md, fingerprint.md, watermark.md, audit.md (ex-README des modules)
+│   └── docs/        crypto.md, embedding.md, dicom.md, stego.md, fingerprint.md, watermark.md, audit.md
 └── iam/             war     tn.medimage:medimage-iam    → iam-1.0.war
     └── src/main/java/tn/medimagetrust/iam/              IamApplication (@ApplicationPath("/iam")), HealthResource
 ```
 
-Responsables d'après la répartition du dossier v2.4 (§10.1). À venir dans api : `dicom` (lecture et contrôle DICOM)
-et `stego` (jeton S).
+Responsables d'après la répartition du dossier (§10.1 : stéganographie et contrôle DICOM pour Amel).
 
 ## Rôle des trois modules
 
 | Module | Packaging | Rôle |
 |---|---|---|
 | `core` | jar | Code commun aux deux WAR, embarqué dans leur `WEB-INF/lib` : aujourd'hui le filtre `@NoStore` (`Cache-Control: no-store`). |
-| `api` | war (`api-1.0.war`) | Tout le code développé : les cinq anciens modules devenus packages, et l'API REST `/api`. |
+| `api` | war (`api-1.0.war`) | Tout le code développé : les cinq anciens modules devenus packages, `dicom` et `stego`, et l'API REST `/api`. |
 | `iam` | war (`iam-1.0.war`) | Identités et accès. Squelette : seule la sonde `GET /iam/health` existe ; l'authentification viendra dans une étape dédiée. |
 
 ### Règle : ce qui est partagé par iam et api va dans core
@@ -48,16 +49,19 @@ Maven ne sépare plus les packages d'api : ce sont les tests d'architecture
 modules. Une violation rend la CI rouge.
 
 ```
-                 api.rest  (peut dépendre de tout ; rien ne dépend de lui)
-                    │
-     ┌──────────────┼───────────────┬──────────────┐
-     ▼              ▼               ▼              ▼
- fingerprint    watermark         audit         common.web (core)
-   │    │        │    │             │
-   │    └──┐  ┌──┘    │             │
-   ▼       ▼  ▼       ▼             ▼
- crypto   embedding  crypto       crypto
+api.rest           ──► tous les packages et core (rien ne dépend de api.rest)
+fingerprint        ──► crypto, embedding
+watermark          ──► crypto, embedding
+stego              ──► crypto, embedding
+dicom              ──► embedding        + org.dcm4che3 (seul package autorisé à utiliser dcm4che)
+audit              ──► crypto
+embedding          ──► (aucun)
+crypto             ──► (aucun)
+common.web (core)  ──► (aucun)
 ```
+
+`dicom` émet ses événements de sécurité par l'interface `DicomAuditSink`, que la couche REST relie au journal
+d'audit : c'est ce qui lui permet de ne dépendre que d'`embedding`.
 
 | # | Règle | Module |
 |---|---|---|
@@ -68,8 +72,14 @@ modules. Une violation rend la CI rouge.
 | 5 | `fingerprint` et `watermark` ne dépendent que de `crypto` et d'`embedding`, pas l'un de l'autre | api |
 | 6 | Seul `api.rest` peut dépendre de tous les packages ; rien ne dépend de `api.rest` ni de `iam` ; `common` (core) ne dépend d'aucun package métier ; `iam` ne dépend pas d'api | api, iam |
 | 7 | Aucun `System.out`, `System.err` ni `printStackTrace()` en production | api, iam |
-| 8 | `java.util.Random` (et ses sous-classes autres que `SecureRandom`) interdit dans `crypto`, `fingerprint` et `watermark` | api |
+| 8 | `java.util.Random` (et ses sous-classes autres que `SecureRandom`) interdit dans `crypto`, `fingerprint`, `watermark` et `stego` | api |
 | 9 | Aucun cycle entre les packages `tn.medimagetrust.*` | api |
+| 10 | `dicom` ne dépend que d'`embedding` | api |
+| 11 | `stego` ne dépend que de `crypto` et d'`embedding` (ni `watermark`, ni `fingerprint` : le jeton S se lit sans W) | api |
+| 12 | Seul `dicom` utilise `org.dcm4che3` : tout fichier DICOM passe par la lecture sûre | api |
+
+Les règles 1, 10, 11 et 12 sont aussi vérifiées sur des classes de test qui les violent volontairement
+(`ArchitectureRuleSelfTest`).
 
 Le simulateur de collusions (`CollusionSimulator`, `SimulationReport`, `SimulationMain`) est dans les **sources de
 test** d'api : outil de CI, absent du WAR, ce qui garde les règles 7 et 8 sans exception.
@@ -83,12 +93,15 @@ mvn -B -f middleware/pom.xml clean verify                                  # tou
 mvn -B -f middleware/pom.xml -pl api test -Dtest='tn.medimagetrust.embedding.**'   # un package
 mvn -B -f middleware/pom.xml -pl api test -Dgroups=SEC-M01                 # tests liés à une exigence (tags JUnit)
 mvn -B -f middleware/pom.xml -pl api test "-Dgroups=memory" "-DargLine=-Xmx300m"   # budget mémoire 36 Mpx
+MEDIMAGE_CORPUS_DIR=~/medimage-corpus mvn -B -f middleware/pom.xml -pl api -am verify -Dgroups=corpus   # corpus réel (docs/CORPUS.md)
 mvn -B -f middleware/pom.xml -pl api test -Dtest='tn.medimagetrust.Architecture*'  # règles d'architecture
 mvn -B -f middleware/pom.xml -DskipTests package                           # api-1.0.war et iam-1.0.war
 mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java "-Dexec.args=3000 target/reports"   # simulation SEC-D04 (réacteur, sans install)
 ```
 
-Le test mémoire (tag `memory`) est exclu par défaut ; un profil activé par `-Dgroups` lève cette exclusion.
+Les tests `memory` et `corpus` sont exclus par défaut ; un profil activé par `-Dgroups` lève cette exclusion. Les
+tests `corpus` sont ignorés si `MEDIMAGE_CORPUS_DIR` est absent ; le corpus se télécharge par
+`scripts/corpus/fetch-corpus.sh` (aucun fichier `.dcm` dans le dépôt).
 
 ## Les deux WAR
 
@@ -110,6 +123,8 @@ Ces valeurs sont à reprendre dans les futurs fichiers `.properties` de dev et d
 | `org.junit.jupiter:junit-jupiter` | 5.11.4 (`test`) |
 | `jakarta.platform:jakarta.jakartaee-api` | 11.0.0 (`provided`) |
 | `com.tngtech.archunit:archunit-junit5` | 1.5.1 (`test`) |
+| `org.dcm4che:dcm4che-core` | 5.35.2, dépôt `https://www.dcm4che.org/maven2/` limité au groupe `org.dcm4che` (voir [`api/docs/dicom.md`](api/docs/dicom.md)) |
+| `org.slf4j:slf4j-api` | 2.0.18 (`provided`, fourni par WildFly ; exclu de dcm4che-core) |
 | `maven-surefire-plugin` | 3.5.2 |
 | `maven-war-plugin` | 3.4.0 |
 | `exec-maven-plugin` | 3.5.0 |
@@ -118,6 +133,8 @@ Ces valeurs sont à reprendre dans les futurs fichiers `.properties` de dev et d
 
 - [`api/docs/crypto.md`](api/docs/crypto.md) : hiérarchie des clés (KEK seule), formats HKDF et AAD, API.
 - [`api/docs/embedding.md`](api/docs/embedding.md) : profil 3 (Δ(B), mode signé), condensats, `FBlockChannel`, bilan mémoire, décisions de conception, limites connues.
+- [`api/docs/dicom.md`](api/docs/dicom.md) : lecture sûre (ordre des contrôles, motifs de rejet), écriture de la copie, décisions de conception, écarts avec le dossier v2.6.
+- [`api/docs/stego.md`](api/docs/stego.md) : format du jeton S, flux recherche, extraction en échec fermé.
 - [`api/docs/fingerprint.md`](api/docs/fingerprint.md) : code de Tardos v2.4 sur `FBlockChannel`, simulation SEC-D04.
 - [`api/docs/watermark.md`](api/docs/watermark.md) : charge W de 208 octets, cohérence avec embedding, écarts.
 - [`api/docs/audit.md`](api/docs/audit.md) : journal chaîné, ancrage, infrastructure à fournir.

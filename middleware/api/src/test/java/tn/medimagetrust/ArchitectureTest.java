@@ -54,6 +54,9 @@ class ArchitectureTest {
     static final String API_REST = ROOT + ".api.rest..";
     static final String IAM = ROOT + ".iam..";
     static final String COMMON = ROOT + ".common..";
+    static final String DICOM = ROOT + ".dicom..";
+    static final String STEGO = ROOT + ".stego..";
+    static final String DCM4CHE = "org.dcm4che3..";
 
     private static final List<Class<? extends Annotation>> HTTP_METHODS =
             List.of(GET.class, POST.class, PUT.class, DELETE.class, PATCH.class);
@@ -138,13 +141,32 @@ class ArchitectureTest {
     static final ArchRule R7_PAS_DE_SORTIE_STANDARD = NO_CLASSES_SHOULD_ACCESS_STANDARD_STREAMS
             .because("aucune sortie standard ni trace de pile en production : journalisation contrôlée (SEC07)");
 
-    /** Règle 8 — java.util.Random interdit dans crypto, fingerprint et watermark : seul SecureRandom est accepté. */
+    /**
+     * Règle 8 — java.util.Random interdit dans crypto, fingerprint, watermark et stego : seul SecureRandom est accepté.
+     */
     @ArchTest
-    static final ArchRule R8_PAS_DE_RANDOM = noClasses().that().resideInAnyPackage(CRYPTO, FINGERPRINT, WATERMARK)
+    static final ArchRule R8_PAS_DE_RANDOM = noClasses().that().resideInAnyPackage(CRYPTO, FINGERPRINT, WATERMARK, STEGO)
             .should().dependOnClassesThat(assignableTo(Random.class).and(not(assignableTo(SecureRandom.class))))
             .because("seul SecureRandom est accepté pour l'aléa des clés, nonces et marques");
 
     /** Règle 9 — aucun cycle entre les packages tn.medimagetrust.*. */
     @ArchTest
     static final ArchRule R9_SANS_CYCLE = slices().matching(ROOT + ".(*)..").should().beFreeOfCycles();
+
+    /** Règle 10 — dicom ne dépend que d'embedding (la couche REST relie son audit au journal). */
+    @ArchTest
+    static final ArchRule R10_DICOM = onlyDependsOn(DICOM,
+            "dicom ne dépend que d'embedding : ni clé, ni registre, ni journal", DICOM, EMBEDDING);
+
+    /** Règle 11 — stego ne dépend que de crypto et d'embedding (ni watermark, ni fingerprint). */
+    @ArchTest
+    static final ArchRule R11_STEGO = onlyDependsOn(STEGO,
+            "stego ne dépend que de crypto et d'embedding : le jeton S se lit sans W (SEC-D01)", STEGO, CRYPTO, EMBEDDING);
+
+    /** Règle 12 — seul dicom utilise dcm4che : tout octet de fichier DICOM passe par la lecture sûre. */
+    @ArchTest
+    static final ArchRule R12_DCM4CHE_DANS_DICOM = noClasses().that().resideOutsideOfPackage(DICOM)
+            .and().resideOutsideOfPackage(DCM4CHE)
+            .should().dependOnClassesThat().resideInAPackage(DCM4CHE)
+            .because("seul le package dicom lit ou écrit du DICOM (lecture sûre, échec fermé, SEC-D02)");
 }
