@@ -54,7 +54,7 @@ protection de `main`, secrets de prod) :
 
 - CI (`.github/workflows/ci.yml`, sur toute branche et toute PR vers `main`) : compilation, tests (ArchUnit, vecteurs
   NIST AES-GCM, budget mémoire), Gitleaks, CodeQL, revue des dépendances, SBOM CycloneDX, ShellCheck, intégrité des
-  scripts de base fournis, banc d'attaques non bloquant ;
+  scripts de base fournis, banc de robustesse (attribution, PSNR et faux positifs bloquants) ;
 - CD (`.github/workflows/cd.yml`) : après une CI verte sur `main`, WildFly 42 est installé dans le runner par
   [`scripts/`](scripts/README.md), puis déploiement, test de fumée, banc de charge et ZAP baseline ; la prod passe par
   SSH après approbation manuelle ;

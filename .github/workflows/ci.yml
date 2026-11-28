@@ -178,12 +178,12 @@ jobs:
         run: '"$RUNNER_TEMP/actionlint" -color'
 
   attack-bench:
-    name: banc d'attaques (non bloquant)
+    name: banc de robustesse (attribution, PSNR, faux positifs)
     needs: build
     runs-on: ubuntu-latest
-    # Job informatif : une récupération sous 95 % est une dette technique suivie (avertissement) ; les critères
-    # bloquants du programme (PSNR, faux positifs) sont signalés dans le résumé sans bloquer la CI.
-    continue-on-error: true
+    # Bloquant : le programme échoue si le vrai destinataire n'est pas accusé dans toutes les copies d'un scénario
+    # (sans attaque, JPEG Q75, redimensionnement 75 %, en 8 et en 12 bits), si un faux positif dépasse 1 % ou si le
+    # PSNR passe sous 40 dB. Une récupération des bits F sous 95 % reste un avertissement (::warning::), sans échec.
     permissions:
       contents: read
     steps:

@@ -7,7 +7,9 @@ import tn.medimagetrust.embedding.FBlockChannel;
  * par bloc, 128 blocs tirés secrètement ({@link PositionPermutation}).
  *
  * <p>Correspondance : symbole {@code i} → bloc {@code pos[i / 8]} → coefficient {@code i % 8} (rang zigzag
- * {@code 6 + i % 8}). Chaque bloc utilisé reçoit 8 dithers dérivés de K_F ({@link #dithers(byte[], int)}).</p>
+ * {@code 6 + i % 8}). Chaque bloc utilisé reçoit 8 dithers dérivés de K_F ({@link #dithers(byte[], int, double)}),
+ * dans {@code [0, Δ)} où Δ est le pas du canal ({@link FBlockChannel#qimDelta()}) : Δ(B) de l'émission, jamais lu dans
+ * une copie analysée.</p>
  */
 public final class FingerprintEmbedder {
 
@@ -30,7 +32,7 @@ public final class FingerprintEmbedder {
         for (int k = 0; k < pos.length; k++) {
             boolean[] b = new boolean[n];
             System.arraycopy(bits, k * n, b, 0, n);
-            f.write(pos[k], b, dithers(maskDigest, pos[k]));
+            f.write(pos[k], b, dithers(maskDigest, pos[k], f.qimDelta()));
         }
     }
 
@@ -41,7 +43,7 @@ public final class FingerprintEmbedder {
         byte[] symbols = new byte[FingerprintParams.SYMBOLS];
         int erasures = 0;
         for (int k = 0; k < pos.length; k++) {
-            int[] read = f.read(pos[k], dithers(maskDigest, pos[k]));
+            int[] read = f.read(pos[k], dithers(maskDigest, pos[k], f.qimDelta()));
             if (read == null || read.length != n) {
                 throw new FingerprintException(FingerprintException.Code.INVALID_INPUT, "bloc F illisible");
             }
@@ -57,17 +59,19 @@ public final class FingerprintEmbedder {
     /**
      * 8 dithers du bloc d'indice {@code blockIndex} de la classe F, uniformes dans {@code [0, Δ)} :
      * flux HMAC sous K_F, étiquette {@code MIT-FD-v1}, graine {@code maskDigest ‖ blockIndex (4 octets,
-     * gros-boutiste)} ; 53 bits par valeur.
+     * gros-boutiste)} ; 53 bits par valeur. Les tirages ne dépendent pas de Δ : seule l'échelle change.
+     *
+     * @param delta pas Δ(B) du canal F
      */
-    double[] dithers(byte[] maskDigest, int blockIndex) {
+    double[] dithers(byte[] maskDigest, int blockIndex, double delta) {
         byte[] seed = new byte[maskDigest.length + 4];
         System.arraycopy(maskDigest, 0, seed, 0, maskDigest.length);
         System.arraycopy(Messages.i32(blockIndex), 0, seed, maskDigest.length, 4);
         HmacStream stream = new HmacStream(prf, FingerprintParams.LABEL_DITHER, seed);
         double[] d = new double[FingerprintParams.BITS_PER_BLOCK];
         for (int j = 0; j < d.length; j++) {
-            double v = stream.nextUnitDouble() * FingerprintParams.QIM_DELTA;
-            d[j] = v < FingerprintParams.QIM_DELTA ? v : Math.nextDown(FingerprintParams.QIM_DELTA);
+            double v = stream.nextUnitDouble() * delta;
+            d[j] = v < delta ? v : Math.nextDown(delta);
         }
         return d;
     }

@@ -67,6 +67,14 @@ class EmbeddingIntegrationTest {
         return PixelImage.fromInts(rows, cols, 12, Photometric.MONOCHROME2, px, false, false);
     }
 
+    /** Copie 12 bits reconstruite à partir de valeurs, dans la représentation de la copie (signée ou non). */
+    static PixelImage image(int rows, int cols, int[] values, boolean signed) {
+        if (!signed) return PixelImage.fromInts(rows, cols, 12, Photometric.MONOCHROME2, values, false, false);
+        short[] sv = new short[values.length];
+        for (int i = 0; i < sv.length; i++) sv[i] = (short) values[i];
+        return PixelImage.signedFromShorts(rows, cols, 12, Photometric.MONOCHROME2, sv, false, false);
+    }
+
     /** Émission complète : F par fingerprint, S et W aléatoires, contrôle final. */
     private PixelImage issue(PixelImage original, FingerprintService svc, String recipient, Random rnd) {
         EmbeddingSession session = EmbeddingSession.open(original);
@@ -77,7 +85,7 @@ class EmbeddingIntegrationTest {
         rnd.nextBytes(w);
         session.writeS(s);
         session.writeW(w);
-        return session.finish(); // lève une exception si un invariant est violé
+        return session.finish().image(); // lève une exception si un invariant est violé
     }
 
     @Test
@@ -88,8 +96,8 @@ class EmbeddingIntegrationTest {
 
         EmbeddingSession reference = EmbeddingSession.open(original); // partitions et masque de l'émission
         Partitions partitions = Partitions.of(RoniDetector.detect(original));
-        var report = svc.analyze(imageId, FBlockReader.of(copy, partitions), reference.maskDigest(), recipients,
-                Optional.empty());
+        var report = svc.analyze(imageId, FBlockReader.of(copy, partitions, original.bitsStored()),
+                reference.maskDigest(), recipients, Optional.empty());
         assertEquals(AttributionReport.Verdict.ACCUSED, report.verdict());
         assertEquals(1, report.accused().size());
         assertEquals("recipient-21", report.accused().get(0).recipientId());
@@ -106,17 +114,17 @@ class EmbeddingIntegrationTest {
 
         // Les complices comparent leurs copies et prennent chaque bloc F chez l'un ou l'autre.
         Partitions partitions = Partitions.of(RoniDetector.detect(original));
-        char[] pa = a.pixels(), pb = b.pixels();
-        char[] pirate = pa.clone();
+        int[] pirate = new int[512 * 512];
+        for (int i = 0; i < pirate.length; i++) pirate[i] = a.pixel(i);
         for (int block : partitions.fBlocks()) {
             if (!rnd.nextBoolean()) continue;
             int top = (block / partitions.blockCols()) * 8, left = (block % partitions.blockCols()) * 8;
             for (int r = 0; r < 8; r++) {
-                System.arraycopy(pb, (top + r) * 512 + left, pirate, (top + r) * 512 + left, 8);
+                for (int c = 0; c < 8; c++) pirate[(top + r) * 512 + left + c] = b.pixel((top + r) * 512 + left + c);
             }
         }
-        PixelImage forged = new PixelImage(512, 512, 12, Photometric.MONOCHROME2, pirate, false, false);
-        var report = svc.analyze(imageId, FBlockReader.of(forged, partitions),
+        PixelImage forged = image(512, 512, pirate, a.signed() || b.signed());
+        var report = svc.analyze(imageId, FBlockReader.of(forged, partitions, original.bitsStored()),
                 EmbeddingSession.open(original).maskDigest(), recipients, Optional.empty());
         assertFalse(report.accused().isEmpty(), "aucun complice détecté");
         assertTrue(report.accused().stream().allMatch(
@@ -132,9 +140,11 @@ class EmbeddingIntegrationTest {
         FingerprintService svc = FingerprintService.forKid(crypto, KID);
         PixelImage copy = issue(original, svc, "recipient-5", new Random(3));
         int keptRows = 512 / 4;
-        char[] px = java.util.Arrays.copyOf(copy.pixels(), keptRows * 512);
-        PixelImage cropped = new PixelImage(keptRows, 512, 12, Photometric.MONOCHROME2, px, false, false);
-        var report = svc.analyze(imageId, FBlockReader.of(cropped, Partitions.of(RoniDetector.detect(original))),
+        int[] px = new int[keptRows * 512];
+        for (int i = 0; i < px.length; i++) px[i] = copy.pixel(i);
+        PixelImage cropped = image(keptRows, 512, px, copy.signed());
+        var report = svc.analyze(imageId, FBlockReader.of(cropped, Partitions.of(RoniDetector.detect(original)),
+                        original.bitsStored()),
                 EmbeddingSession.open(original).maskDigest(), recipients, Optional.empty());
         assertEquals(AttributionReport.Verdict.TOO_MANY_ERASURES, report.verdict());
         assertTrue(report.accused().isEmpty());

@@ -14,7 +14,8 @@ final class Markings {
 
     /** Trace d'un marquage complet, pour relire et vérifier. */
     record Marking(PixelImage original, PixelImage marked, RoniProfile profile, Partitions partitions,
-                   FWrites f, byte[] s, byte[] w, byte[] roiDigest, byte[] maskDigest, byte[] sDigest) {}
+                   FWrites f, byte[] s, byte[] w, byte[] roiDigest, byte[] maskDigest, byte[] sDigest,
+                   EmbeddingResult result) {}
 
     static int[] pickFIndices(int classSize, int count, Random rnd) {
         List<Integer> all = new ArrayList<>(classSize);
@@ -31,10 +32,19 @@ final class Markings {
         return b;
     }
 
-    static double[] randomDither(Random rnd) {
+    /** 8 dithers uniformes dans {@code [0, delta)} (Δ du canal F de la session). */
+    static double[] randomDither(Random rnd, double delta) {
         double[] d = new double[EmbeddingProfile.F_BITS_PER_BLOCK];
-        for (int i = 0; i < d.length; i++) d[i] = rnd.nextDouble() * EmbeddingProfile.QIM_DELTA;
+        for (int i = 0; i < d.length; i++) d[i] = rnd.nextDouble() * delta;
         return d;
+    }
+
+    /**
+     * 8 dithers dans {@code [0, Δ(8))} : valides pour toute profondeur (Δ(B) ≥ Δ(8)), pour les tests d'état et
+     * d'entrées malformées, qui ne relisent pas les bits.
+     */
+    static double[] randomDither(Random rnd) {
+        return randomDither(rnd, EmbeddingProfile.qimDelta(EmbeddingProfile.MIN_BITS_STORED));
     }
 
     static byte[] randomBytes(int n, Random rnd) {
@@ -50,7 +60,7 @@ final class Markings {
         double[][] dither = new double[idx.length][];
         for (int k = 0; k < idx.length; k++) {
             bits[k] = randomBits(rnd);
-            dither[k] = randomDither(rnd);
+            dither[k] = randomDither(rnd, session.fChannel().qimDelta());
             session.fChannel().write(idx[k], bits[k], dither[k]);
         }
         return new FWrites(idx, bits, dither);
@@ -67,8 +77,9 @@ final class Markings {
         byte[] sd = session.sDigest();
         byte[] w = randomBytes(EmbeddingProfile.W_BYTES, rnd);
         session.writeW(w);
-        PixelImage marked = session.finish();
-        return new Marking(original, marked, session.profile(), session.partitions(), f, s, w, roi, mask, sd);
+        EmbeddingResult result = session.finish();
+        return new Marking(original, result.image(), session.profile(), session.partitions(), f, s, w, roi, mask, sd,
+                result);
     }
 
     /** Nombre de bits F relus différents de ceux écrits. */

@@ -42,18 +42,25 @@ class MaskStabilityTest {
             RoniProfile profile = RoniDetector.detect(img);
             Partitions parts = Partitions.of(profile);
             char[] work = img.pixels();
+            double delta = EmbeddingProfile.qimDelta(img.bitsStored());
+            int bound = EmbeddingProfile.maxFDeviation(img.bitsStored());
+            // Même règle que la session : aucun bornage ; représentation signée dès qu'une valeur sort de la plage.
+            boolean signed = false;
             for (int k : Markings.pickFIndices(parts.fClassSize(), EmbeddingProfile.F_USED_BLOCKS, rnd)) {
                 int b = parts.fBlock(k);
                 int top = parts.blockTop(b);
                 int left = parts.blockLeft(b);
-                int[] block = QimBlockCodec.writeBlock(QimBlockCodec.getBlock(work, img.cols(), top, left),
-                        Markings.randomBits(rnd), Markings.randomDither(rnd), img.maxValue());
-                QimBlockCodec.putBlock(work, img.cols(), top, left, block);
+                int[] block = QimBlockCodec.writeBlock(QimBlockCodec.getBlock(work, signed, img.cols(), top, left),
+                        Markings.randomBits(rnd), Markings.randomDither(rnd, delta), delta, bound);
+                for (int v : block) {
+                    if (v < 0 || v > img.maxValue()) signed = true;
+                }
+                QimBlockCodec.putBlock(work, signed, img.cols(), top, left, block);
             }
             LsbChannel lsb = new LsbChannel(work, parts, true);
             lsb.writeS(Markings.randomBytes(64, rnd));
             lsb.writeW(Markings.randomBytes(208, rnd));
-            PixelImage marked = img.withPixels(work);
+            PixelImage marked = img.withPixels(work, signed);
             assertTrue(RoniDetector.candidates(marked).stream().anyMatch(c -> c.sameMask(profile)));
         }
     }

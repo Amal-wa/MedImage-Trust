@@ -110,7 +110,7 @@ class MemoryBudgetTest {
 
         resetPeaks();
         t0 = System.nanoTime();
-        PixelImage marked = session.finish();
+        PixelImage marked = session.finish().image();
         long tFinish = System.nanoTime() - t0;
         long peakFinish = peakSum() - base;
         live = liveHeapAfterGc() - base;

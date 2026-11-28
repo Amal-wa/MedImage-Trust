@@ -60,6 +60,6 @@ class OtsuTest {
     @DisplayName("Fantôme normal : T tombe dans le trou entre le fond (q ≤ 60) et le corps (q ≥ 450)")
     void phantomThresholdInGap() {
         int t = RoniDetector.otsuThreshold(Phantoms.normal().image());
-        assertEquals(true, t >= 60 + EmbeddingProfile.GUARD_Q && t < 450 - EmbeddingProfile.GUARD_Q);
+        assertEquals(true, t >= 60 + EmbeddingProfile.guardQ(Phantoms.normal().image().bitsStored()) && t < 450 - EmbeddingProfile.guardQ(Phantoms.normal().image().bitsStored()));
     }
 }

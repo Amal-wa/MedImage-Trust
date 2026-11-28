@@ -86,6 +86,12 @@ final class InMemoryFBlockChannel implements FBlockChannel {
         return blocks.length;
     }
 
+    /** Pas de ce canal de test : Δ(8), celui de la copie de la QIM ci-dessous. */
+    @Override
+    public double qimDelta() {
+        return Qim.DELTA;
+    }
+
     @Override
     public void write(int fIndex, boolean[] bits8, double[] dither8) {
         checkIndex(fIndex);
@@ -125,7 +131,7 @@ final class InMemoryFBlockChannel implements FBlockChannel {
 
     /** Copie de test de la DCT/QIM du module embedding (voir la Javadoc de la classe). */
     static final class Qim {
-        static final double DELTA = 12.0;
+        static final double DELTA = tn.medimagetrust.embedding.EmbeddingProfile.qimDelta(8);
         static final int[][] CARRIERS = {{0, 3}, {1, 2}, {2, 1}, {3, 0}, {4, 0}, {3, 1}, {2, 2}, {1, 3}};
         private static final double[][] M = new double[8][8];
 

@@ -98,6 +98,36 @@ public final class Phantoms {
                 TEST_SEED_PHANTOM);
     }
 
+    /** Variante 8 bits du fantôme normal (fond vers 30, corps vers 153) : même géométrie, dynamique 8 bits. */
+    static Phantom normal8() {
+        return build(new Spec(512, 512, 8, Photometric.MONOCHROME2, 30, 3, 153, 12, 256, 256, 150, 190),
+                TEST_SEED_PHANTOM);
+    }
+
+    /** Variante 8 bits du fond clair (MONOCHROME1, fond vers 230, corps sombre vers 100). */
+    static Phantom lightBackground8() {
+        return build(new Spec(512, 512, 8, Photometric.MONOCHROME1, 230, 3, 100, 12, 256, 256, 150, 190),
+                TEST_SEED_PHANTOM);
+    }
+
+    /** Fond exactement à 0 en 8 bits (original stocké sur 8 bits), corps clair vers 153. */
+    static Phantom zeroBackground8() {
+        return build(new Spec(512, 512, 8, Photometric.MONOCHROME2, 0, 0, 153, 12, 256, 256, 150, 190),
+                TEST_SEED_PHANTOM);
+    }
+
+    /** Fond exactement à {@code 2^B − 1} (fond saturé, polarité claire), corps sombre, en 12 bits. */
+    static Phantom saturatedBackground() {
+        return build(new Spec(512, 512, 12, Photometric.MONOCHROME1, 4095, 0, 1500, 200, 256, 256, 150, 190),
+                TEST_SEED_PHANTOM);
+    }
+
+    /** Fond exactement à 0, en 16 bits : la QIM sortirait de la plage, que le mode signé ne peut pas couvrir. */
+    static Phantom zeroBackground16() {
+        return build(new Spec(512, 512, 16, Photometric.MONOCHROME2, 0, 0, 32000, 3200, 256, 256, 150, 190),
+                TEST_SEED_PHANTOM);
+    }
+
     /** Fantôme aléatoire marquable (taille, profondeur, polarité, position du corps tirées de {@code rnd}). */
     static Spec randomMarkableSpec(Random rnd) {
         int rows = 256 + rnd.nextInt(129);

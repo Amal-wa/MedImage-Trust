@@ -15,7 +15,7 @@ flowchart LR
         sbom["SBOM CycloneDX"]
         shell["ShellCheck"]
         alint["actionlint<br/>binaire épinglé, somme vérifiée"]
-        attack["banc d'attaques<br/>(non bloquant)"]
+        attack["banc de robustesse<br/>attribution, PSNR, faux positifs"]
         build --> attack
         build --> sbom
     end
@@ -44,7 +44,7 @@ flowchart LR
 | Scripts shell propres | `shellcheck` (tous les `scripts/**/*.sh`) | oui |
 | Workflows GitHub Actions valides | `actionlint` (binaire officiel `rhysd/actionlint` 1.7.12, somme SHA-256 épinglée dans `ci.yml` ; analyse aussi les blocs `run:` avec ShellCheck) | oui |
 | Scripts de base fournis intacts | `fournis` (`scripts/check-fournis.sh`, sommes SHA-256 de `scripts/wildfly/fournis/`) | oui |
-| Banc de robustesse (SEC-D04) : JPEG Q75 en 8 et 12 bits, redimensionnement 75 %, PSNR, faux positifs | `attack-bench` (`AttackBench`, artefact `banc-attaques`, rapport dans le résumé) | non (`continue-on-error`) ; le programme échoue si PSNR < 40 dB ou faux positifs > 1 % |
+| Banc de robustesse (SEC-D04) : JPEG Q75 en 8 et 12 bits, redimensionnement 75 %, attribution, PSNR, faux positifs | `attack-bench` (`AttackBench`, artefact `banc-attaques`, rapport dans le résumé) | oui : vrai destinataire accusé dans toutes les copies de chaque scénario, faux positifs ≤ 1 %, PSNR ≥ 40 dB ; bits F < 95 % : avertissement seulement |
 | Déploiement reproductible de WildFly 42 (hôtes virtuels, TLS 1.3, limites) | `cd.yml` › `deploy-dev` : `install-wildfly.sh dev` | oui |
 | Test de fumée (santé, en-têtes, HTTPS, TLS 1.2 refusé, 401 problem+json) | `deploy-dev` : `deploy.sh dev` | oui ; `/api/whoami` en 404 n'est qu'un avertissement jusqu'au prompt 12 |
 | Objectif SRE : p95 < 2 s (SEC-R02), aucune requête suspendue > 10 s | `deploy-dev` : `LoadBench` (500 + 200 requêtes à 20 en parallèle, rafale de 200), tas du serveur avant et après | oui |
@@ -109,7 +109,7 @@ depuis `scripts/`, qu'il soit dans `.mvn/` à la racine ou dans `middleware/.mvn
 dossier du POM parent, visité en premier (un `.mvn/` à la racine serait masqué par celui-ci). Le fichier ne contient
 pas de commentaire : une option par ligne.
 
-## Banc d'attaques
+## Banc de robustesse
 
 Le banc réutilise les fantômes des tests d'embedding (`tn.medimagetrust.embedding.Phantoms`, rendu public pour cela)
 et la vraie chaîne `EmbeddingSession` + `FingerprintService`, avec une clé K_F de test fixe. Il mesure, par fantôme
@@ -119,16 +119,35 @@ innocent accusé sur une copie, ou une accusation sur l'image non marquée), le 
 Résultat local (20 copies par fantôme, 64 destinataires) : voir le rapport `report.md` produit par le job ; résumé
 dans `middleware/README.md` (écarts connus).
 
-**Échec en 12 bits : cause.** Le pas QIM est fixe, Δ = 12 valeurs stockées (`EmbeddingProfile.QIM_DELTA`), quelle que
-soit la profondeur. En 12 bits (4096 niveaux), ce pas est trop petit : le passage en 8 bits imposé par JPEG le ramène à
-moins d'un niveau de gris, et l'interpolation du redimensionnement déplace les coefficients de bien plus que Δ/4 ; F
-est effacé (≈ 50 % des bits, le hasard), sans fausse accusation. **Correction prévue au prompt 09 : Δ proportionnel à
-la profondeur.** D'ici là, une récupération sous 95 % reste un avertissement (`::warning::`), et le job ne bloque pas.
+**Correction appliquée : pas QIM proportionnel à la profondeur.** Le pas vaut Δ(B) = 12 × 2^(B − 8)
+(`EmbeddingProfile.qimDelta`), B étant la profondeur effective de l'original : 12 en 8 bits, 192 en 12 bits. Avec
+l'ancien pas fixe Δ = 12, une image 12 bits perdait F sous JPEG Q75 (le passage en 8 bits ramenait le pas à moins d'un
+niveau de gris) et sous le redimensionnement à 75 % (écart d'interpolation bien supérieur à Δ/4) : environ 50 % des
+bits relus, aucune attribution. B est enregistrée à l'émission (`EmbeddingResult.bitsStored()`) et redonnée à
+l'extraction (`FBlockReader.of(copie, partitions, B)`) : Δ n'est jamais lu dans la copie analysée. Les sorties 8 bits
+sont identiques à l'ancien profil (empreintes SHA-256 vérifiées par les tests). Détail :
+[`middleware/api/docs/embedding.md`](../middleware/api/docs/embedding.md), décisions 11 à 14.
 
-**Critère de mesure.** La récupération est mesurée de deux façons (taux de bits F relus, attribution du vrai
-destinataire) et sur deux profondeurs (8 et 12 bits). Critère bloquant : PSNR ≥ 40 dB et faux positifs ≤ 1 %. Une
-récupération des bits sous 95 % produit un avertissement ; elle est suivie comme une dette technique (pas QIM
-proportionnel à la profondeur, prévu).
+Mesures locales, 20 copies par fantôme, 64 destinataires (fantômes 512 × 512) :
+
+| Fantôme | Scénario | Avant : bits F relus | Avant : vrai destinataire | Après : bits F relus | Après : vrai destinataire |
+|---|---|---|---|---|---|
+| 12 bits | sans attaque | 100,00 % | 20 / 20 | 100,00 % | 20 / 20 |
+| 12 bits | JPEG Q75 | 49,88 % | **0 / 20** | 69,74 % | **20 / 20** |
+| 12 bits | redimensionnement 75 % | 50,10 % | **0 / 20** | 97,79 % | **20 / 20** |
+| 8 bits | sans attaque | 100,00 % | 20 / 20 | 100,00 % | 20 / 20 |
+| 8 bits | JPEG Q75 | 71,69 % | 20 / 20 | 71,69 % | 20 / 20 |
+| 8 bits | redimensionnement 75 % | 95,65 % | 20 / 20 | 95,65 % | 20 / 20 |
+
+PSNR minimal : 12 bits, 84,78 dB avant et 61,11 dB après (pas 16 fois plus grand) ; 8 bits, 60,71 dB avant et après.
+Faux positifs : 0 % partout, y compris sur les images non marquées.
+
+**Critères.** La récupération est mesurée de deux façons (taux de bits F relus, attribution du vrai destinataire) et
+sur deux profondeurs (8 et 12 bits). Critères **bloquants** (le programme sort avec le code 1, le job échoue) : le vrai
+destinataire est accusé dans toutes les copies de chaque scénario (sans attaque, JPEG Q75, redimensionnement à 75 %, en
+8 et en 12 bits), faux positifs ≤ 1 %, PSNR ≥ 40 dB. Une récupération des bits F sous 95 % produit un avertissement
+(`::warning::`), non bloquant : le code de Tardos tolère une part de bits erronés, et c'est l'attribution qui décide.
+JPEG Q75 laisse environ 70 % des bits F en 8 comme en 12 bits : l'avertissement reste attendu pour ce scénario.
 
 ## ZAP baseline : règles ignorées
 
@@ -150,7 +169,8 @@ Settings › Branches › Add branch ruleset (ou « branch protection rule ») s
    (`.github/CODEOWNERS`).
 2. Require status checks to pass : `build (compilation, tests, ArchUnit)`, `scripts de base fournis intacts`,
    `gitleaks (secrets dans tout l'historique)`, `CodeQL (Java)`, `revue des dépendances (PR)`, `SBOM CycloneDX`,
-   `ShellCheck`, `actionlint` ; cocher « Require branches to be up to date ». Le banc d'attaques n'en fait pas partie.
+   `ShellCheck`, `actionlint`, `banc de robustesse (attribution, PSNR, faux positifs)` ; cocher « Require branches to
+   be up to date ».
 3. Block force pushes ; Restrict deletions ; Require linear history (facultatif).
 4. Settings › Code security : activer Dependabot alerts et Dependabot security updates (cette dernière est
    **désactivée** au 27/11/2026 d'après l'API GitHub) ; Secret scanning et Push protection sont déjà actifs.

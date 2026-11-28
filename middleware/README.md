@@ -13,7 +13,7 @@ middleware/
 ├── api/             war     tn.medimage:medimage-api    → api-1.0.war   ← TOUT le code développé
 │   ├── src/main/java/tn/medimagetrust/
 │   │   ├── crypto/          Nour     SHA-256, HMAC, HKDF, AES-GCM, Ed25519, JCS : seul package qui manipule des clés
-│   │   ├── embedding/       Amel     RONI (profil v2), partitions W/S/F, QIM sur DCT pour F, LSB pour S et W, contrôle final
+│   │   ├── embedding/       Amel     RONI (profil 3), partitions W/S/F, QIM sur DCT pour F au pas Δ(B), LSB pour S et W, contrôle final
 │   │   ├── fingerprint/     Nourhen  code de Tardos : génération, insertion, analyse des fuites
 │   │   ├── watermark/       Nour     preuve W : charge MIT-W-v1 de 208 octets signée Ed25519, vérification en échec fermé
 │   │   ├── audit/           Nourhen  journal d'audit chaîné, ancrage quotidien signé, alertes A1 à A7, rétention
@@ -117,7 +117,7 @@ Ces valeurs sont à reprendre dans les futurs fichiers `.properties` de dev et d
 ## Documentation des packages
 
 - [`api/docs/crypto.md`](api/docs/crypto.md) : hiérarchie des clés (KEK seule), formats HKDF et AAD, API.
-- [`api/docs/embedding.md`](api/docs/embedding.md) : profil RONI v2, condensats, `FBlockChannel`, bilan mémoire, décisions de conception, limites connues.
+- [`api/docs/embedding.md`](api/docs/embedding.md) : profil 3 (Δ(B), mode signé), condensats, `FBlockChannel`, bilan mémoire, décisions de conception, limites connues.
 - [`api/docs/fingerprint.md`](api/docs/fingerprint.md) : code de Tardos v2.4 sur `FBlockChannel`, simulation SEC-D04.
 - [`api/docs/watermark.md`](api/docs/watermark.md) : charge W de 208 octets, cohérence avec embedding, écarts.
 - [`api/docs/audit.md`](api/docs/audit.md) : journal chaîné, ancrage, infrastructure à fournir.
@@ -141,15 +141,14 @@ Ces valeurs sont à reprendre dans les futurs fichiers `.properties` de dev et d
 | Production des clés | `ElytronKeyProvider` (credential store WildFly) pas encore écrit | KEK seule dans Elytron (§8.2, §8.6) | api, côté REST |
 | Découverte de `NoStoreFilter` | vérifiée sans serveur (`NoStoreFilterPackagingTest`) ; contrôlée sur serveur par le test de fumée de `scripts/deploy.sh` (job CD dev), **pas encore exécuté** | en-tête `Cache-Control: no-store` sur `/api/health` et `/iam/health` | premier passage du job CD dev |
 | Test de fumée `/api/whoami` | endpoint absent : `deploy.sh` et `LoadBench` émettent l'avertissement « endpoint whoami absent (prompt 12) » sur un 404, sans échec (`TODO(prompt-12)`) | `401` en `application/problem+json`, sans trace, contrôle strict | prompt 12 |
-| Banc d'attaques | JPEG Q75 et redimensionnement 75 % effacent F en 12 bits (récupération ≈ 50 %) : pas QIM fixe Δ = 12 quelle que soit la profondeur ; en 8 bits, JPEG Q75 ≈ 71 % | récupération ≥ 95 % | correction prévue au prompt 09 (Δ proportionnel à la profondeur) ; dette technique suivie (voir [`docs/ci-cd.md`](../docs/ci-cd.md)) |
 | iam | squelette : seule la sonde `/iam/health` | authentification, autorisation (SEC03) | prompt dédié |
 
-Écarts propres à embedding (bornage à 0, robustesse de F, SEC-M03 c) : voir [`api/docs/embedding.md`](api/docs/embedding.md),
-section « Limites connues ».
+Écarts propres à embedding (B = 16 hors plage, bruit et JPEG Q75 sous 95 % des bits, SEC-M03 c) : voir
+[`api/docs/embedding.md`](api/docs/embedding.md), section « Limites connues ».
 
 Déjà corrigés : jeton S (AAD et sous-clé par émission), dérivation de toutes les clés depuis la seule KEK, kid sur
-16 bits (crypto) ; code F en DCT/QIM sur `FBlockChannel` au lieu du LSB v2.3 (fingerprint) ; budget mémoire à 36 Mpx
-(embedding) ; pipeline CI/CD complet, déclenché sur toutes les branches (prompt 08, [`docs/ci-cd.md`](../docs/ci-cd.md)).
+16 bits (crypto) ; code F en DCT/QIM sur `FBlockChannel` au lieu du LSB v2.3 (fingerprint) ; budget mémoire à 36 Mpx,
+pas QIM proportionnel à la profondeur Δ(B) et copie en entier signé 16 bits sur fond nul ou saturé (embedding) ; pipeline CI/CD complet, déclenché sur toutes les branches (prompt 08, [`docs/ci-cd.md`](../docs/ci-cd.md)).
 
 ## Points tranchés en équipe
 

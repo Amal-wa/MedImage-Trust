@@ -6,20 +6,22 @@ import static tn.medimagetrust.embedding.EmbeddingException.Reason.INVALID_INPUT
 /**
  * Couche robuste F : DCT 8 × 8 orthonormée (type II) et QIM avec dither sur les rangs zigzag 6 à 13.
  *
- * <p>Insertion d'un bit {@code b} avec un dither {@code d ∈ [0, Δ)} :
+ * <p>Le pas Δ est celui de la profondeur effective de l'original, Δ(B) = 12 × 2^(B − 8)
+ * ({@link EmbeddingProfile#qimDelta(int)}), toujours reçu en paramètre : ce codec ne le déduit d'aucune image.
+ * Insertion d'un bit {@code b} avec un dither {@code d ∈ [0, Δ)} :
  * {@code c' = Δ·round((c − d − bΔ/2) / Δ) + d + bΔ/2} ; extraction : le {@code b} dont le réseau est le plus proche
- * de {@code c} (égalité : 0). Après DCT inverse, chaque pixel est arrondi à l'entier ({@code floor(x + 0,5)}) puis
- * borné à {@code [0, maxValue]}.</p>
+ * de {@code c} (égalité : 0), ce qui fixe la marge de décision à Δ/4. Après DCT inverse, chaque pixel est arrondi à
+ * l'entier ({@code floor(x + 0,5)}), <strong>sans aucun bornage</strong> : une valeur qui sortirait de la plage
+ * stockable est rendue telle quelle, et c'est la session qui décide (mode signé ou refus), jamais un écrêtage.</p>
  *
- * <p>Borne théorique : chaque coefficient bouge d'au plus Δ/2 = 6 ; la somme des valeurs absolues des 8 fonctions de
- * base en un pixel vaut au plus {@code 3·√2/8 + 5/4 ≈ 1,78} ; l'écart avant arrondi est donc ≤ 10,7, soit ≤ 11 après
- * arrondi. Le contrôle {@code ≤ 12} est une ceinture de sécurité.</p>
+ * <p>Borne théorique : chaque coefficient bouge d'au plus Δ/2 ; la somme des valeurs absolues des 8 fonctions de base
+ * en un pixel vaut au plus {@code 3·√2/8 + 5/4 ≈ 1,78} ; l'écart avant arrondi est donc ≤ 0,89 Δ (10,7 pour Δ = 12,
+ * soit ≤ 11 après arrondi). Le contrôle {@code ≤ maxFDeviation(B) = Δ} est une ceinture de sécurité.</p>
  */
 final class QimBlockCodec {
     private QimBlockCodec() {}
 
     static final int N = EmbeddingProfile.BLOCK;
-    static final double DELTA = EmbeddingProfile.QIM_DELTA;
 
     /** Positions (ligne, colonne) des rangs zigzag 6 à 13, ordre JPEG. */
     static final int[][] CARRIERS = {
@@ -81,26 +83,26 @@ final class QimBlockCodec {
     }
 
     /** Point du réseau {@code ΔZ + d + bΔ/2} le plus proche de {@code c}. */
-    static double embed(double c, int bit, double dither) {
-        double offset = dither + bit * DELTA / 2.0;
-        return DELTA * Math.floor((c - offset) / DELTA + 0.5) + offset;
+    static double embed(double c, int bit, double dither, double delta) {
+        double offset = dither + bit * delta / 2.0;
+        return delta * Math.floor((c - offset) / delta + 0.5) + offset;
     }
 
-    /** Bit dont le réseau est le plus proche de {@code c} (égalité : 0). */
-    static int extract(double c, double dither) {
-        double d0 = Math.abs(c - embed(c, 0, dither));
-        double d1 = Math.abs(c - embed(c, 1, dither));
+    /** Bit dont le réseau est le plus proche de {@code c} (égalité : 0) : seuil de décision à Δ/4. */
+    static int extract(double c, double dither, double delta) {
+        double d0 = Math.abs(c - embed(c, 0, dither, delta));
+        double d1 = Math.abs(c - embed(c, 1, dither, delta));
         return d1 < d0 ? 1 : 0;
     }
 
     /** Contrôle d'un vecteur de 8 dithers : non nul, longueur 8, chaque valeur finie dans {@code [0, Δ)}. */
-    static double[] checkedDither(double[] dither8) {
+    static double[] checkedDither(double[] dither8, double delta) {
         if (dither8 == null || dither8.length != EmbeddingProfile.F_BITS_PER_BLOCK) {
             throw new EmbeddingException(INVALID_INPUT);
         }
         double[] d = dither8.clone();
         for (double v : d) {
-            if (!(v >= 0.0 && v < DELTA)) { // rejette aussi NaN
+            if (!(v >= 0.0 && v < delta)) { // rejette aussi NaN
                 throw new EmbeddingException(INVALID_INPUT);
             }
         }
@@ -116,62 +118,69 @@ final class QimBlockCodec {
     }
 
     /**
-     * Insère 8 bits dans un bloc de 64 valeurs stockées. Ne modifie pas {@code block} : renvoie le nouveau bloc.
+     * Insère 8 bits dans un bloc de 64 valeurs. Ne modifie pas {@code block} : renvoie le nouveau bloc, arrondi mais
+     * non borné (les valeurs peuvent sortir de la plage stockable : c'est à l'appelant d'en décider).
      *
-     * @throws EmbeddingException {@code F_DEVIATION_EXCEEDED} si un pixel s'écarterait de plus de 12
+     * @param delta        pas Δ(B)
+     * @param maxDeviation écart maximal autorisé par pixel, {@link EmbeddingProfile#maxFDeviation(int)}
+     * @throws EmbeddingException {@code F_DEVIATION_EXCEEDED} si un pixel s'écarterait de plus de {@code maxDeviation}
      */
-    static int[] writeBlock(int[] block, boolean[] bits, double[] dither, int maxValue) {
+    static int[] writeBlock(int[] block, boolean[] bits, double[] dither, double delta, int maxDeviation) {
         double[] f = new double[N * N];
         for (int i = 0; i < f.length; i++) f[i] = block[i];
         double[] c = forward(f);
         for (int k = 0; k < CARRIERS.length; k++) {
             int idx = CARRIERS[k][0] * N + CARRIERS[k][1];
-            c[idx] = embed(c[idx], bits[k] ? 1 : 0, dither[k]);
+            c[idx] = embed(c[idx], bits[k] ? 1 : 0, dither[k], delta);
         }
         double[] g = inverse(c);
         int[] out = new int[N * N];
         for (int i = 0; i < out.length; i++) {
             long v = (long) Math.floor(g[i] + 0.5);
-            if (v < 0) v = 0;
-            if (v > maxValue) v = maxValue;
-            out[i] = (int) v;
-            if (Math.abs(out[i] - block[i]) > EmbeddingProfile.MAX_F_DEVIATION) {
+            if (Math.abs(v - block[i]) > maxDeviation) {
                 throw new EmbeddingException(F_DEVIATION_EXCEEDED);
             }
+            out[i] = (int) v;
         }
         return out;
     }
 
-    /** Lit les 8 bits d'un bloc de 64 valeurs stockées. */
-    static int[] readBlock(int[] block, double[] dither) {
+    /** Lit les 8 bits d'un bloc de 64 valeurs, avec le pas Δ(B) de l'émission. */
+    static int[] readBlock(int[] block, double[] dither, double delta) {
         double[] f = new double[N * N];
         for (int i = 0; i < f.length; i++) f[i] = block[i];
         double[] c = forward(f);
         int[] bits = new int[CARRIERS.length];
         for (int k = 0; k < CARRIERS.length; k++) {
-            bits[k] = extract(c[CARRIERS[k][0] * N + CARRIERS[k][1]], dither[k]);
+            bits[k] = extract(c[CARRIERS[k][0] * N + CARRIERS[k][1]], dither[k], delta);
         }
         return bits;
     }
 
-    /** Copie le bloc 8 × 8 de coin ({@code top}, {@code left}) d'une image de {@code cols} colonnes. */
-    static int[] getBlock(char[] pixels, int cols, int top, int left) {
+    /**
+     * Valeurs du bloc 8 × 8 de coin ({@code top}, {@code left}) d'une image de {@code cols} colonnes, décodées selon la
+     * représentation ({@link PixelImage#decode(char, boolean)}).
+     */
+    static int[] getBlock(char[] pixels, boolean signed, int cols, int top, int left) {
         int[] out = new int[N * N];
         for (int r = 0; r < N; r++) {
             int base = (top + r) * cols + left;
             for (int c = 0; c < N; c++) {
-                out[r * N + c] = pixels[base + c];
+                out[r * N + c] = PixelImage.decode(pixels[base + c], signed);
             }
         }
         return out;
     }
 
-    /** Écrit le bloc 8 × 8 de coin ({@code top}, {@code left}) ; valeurs déjà bornées à {@code [0, maxValue]}. */
-    static void putBlock(char[] pixels, int cols, int top, int left, int[] block) {
+    /**
+     * Écrit le bloc 8 × 8 de coin ({@code top}, {@code left}), encodé selon la représentation
+     * ({@link PixelImage#encode(int, boolean)}) ; l'appelant a vérifié que chaque valeur y est représentable.
+     */
+    static void putBlock(char[] pixels, boolean signed, int cols, int top, int left, int[] block) {
         for (int r = 0; r < N; r++) {
             int base = (top + r) * cols + left;
             for (int c = 0; c < N; c++) {
-                pixels[base + c] = (char) block[r * N + c];
+                pixels[base + c] = PixelImage.encode(block[r * N + c], signed);
             }
         }
     }

@@ -35,7 +35,7 @@ class EmbeddingSessionTest {
         LsbChannel lsb = LsbChannel.reader(marked, m.partitions());
         assertArrayEquals(m.s(), lsb.readS());
         assertArrayEquals(m.w(), lsb.readW());
-        assertEquals(0, Markings.fBitErrors(FBlockReader.of(marked, m.partitions()), m.f()));
+        assertEquals(0, Markings.fBitErrors(FBlockReader.of(marked, m.partitions(), m.original().bitsStored()), m.f()));
         // Les condensats recalculés sur la copie sont ceux que W signe.
         assertArrayEquals(m.roiDigest(), Digests.roiDigest(marked, m.profile()));
         assertArrayEquals(m.sDigest(), Digests.sDigest(LsbChannel.reader(marked, m.partitions()).readS()));
@@ -63,7 +63,7 @@ class EmbeddingSessionTest {
         EmbeddingSession s = EmbeddingSession.open(original);
         s.writeS(new byte[64]);
         s.writeW(new byte[208]);
-        PixelImage marked = s.finish();
+        PixelImage marked = s.finish().image();
         for (int b : s.partitions().fBlocks()) {
             int top = s.partitions().blockTop(b);
             int left = s.partitions().blockLeft(b);
