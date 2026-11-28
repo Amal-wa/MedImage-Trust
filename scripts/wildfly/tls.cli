@@ -6,16 +6,31 @@
 # OCSP stapling : propriété JVM jdk.tls.server.enableStatusRequestExtension=true posée dans bin/standalone.conf par
 # install-wildfly.sh (séance 3 de l'enseignant) ; Elytron n'a pas d'attribut dédié sur server-ssl-context (WildFly 42).
 # Les consoles de gestion (9990, 9993) ne sont pas touchées : elles restent sur l'interface « management ».
+#
+# Suites TLS 1.3 : Elytron règle séparément les suites TLS 1.2 et antérieures (cipher-suite-filter) et les suites
+# TLS 1.3 (cipher-suite-names). Sans cipher-suite-names, aucune suite TLS 1.3 n'est activée : avec protocols=TLSv1.3
+# seul, le serveur coupe toute poignée de main (« unexpected eof », « Remote host terminated the handshake »).
+# Voir scripts/README.md, « TLS 1.3 et cipher-suite-names ».
 set ksPath=`:resolve-expression(expression="${tls.keystore.path}")`
 set ksPass=`:resolve-expression(expression="${tls.keystore.password}")`
 if (outcome != success) of /subsystem=elytron/key-store=medimage-ks:read-resource
-    echo ">>> TLS : magasin, gestionnaire de clés et contexte SSL Elytron (TLSv1.3)"
+    echo ">>> TLS : magasin et gestionnaire de clés Elytron"
     batch
     /subsystem=elytron/key-store=medimage-ks:add(path=$ksPath,type=PKCS12,credential-reference={clear-text=$ksPass})
     /subsystem=elytron/key-manager=medimage-km:add(key-store=medimage-ks,credential-reference={clear-text=$ksPass})
-    /subsystem=elytron/server-ssl-context=medimage-ssc:add(key-manager=medimage-km,protocols=["TLSv1.3"])
-    /subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=ssl-context,value=medimage-ssc)
     run-batch
 else
-    echo ">>> TLS déjà configuré (medimage-ks). Rien à faire."
+    echo ">>> TLS : magasin medimage-ks déjà présent"
 end-if
+if (outcome != success) of /subsystem=elytron/server-ssl-context=medimage-ssc:read-resource
+    echo ">>> TLS : contexte SSL medimage-ssc (TLSv1.3, suites TLS 1.3 explicites)"
+    /subsystem=elytron/server-ssl-context=medimage-ssc:add(key-manager=medimage-km,protocols=["TLSv1.3"],cipher-suite-names="TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256")
+else
+    # Installation existante (créée avant cette correction) : mise à jour en place, sans recréer le contexte.
+    echo ">>> TLS : medimage-ssc existe, mise à jour des protocoles et des suites TLS 1.3"
+    batch
+    /subsystem=elytron/server-ssl-context=medimage-ssc:write-attribute(name=protocols,value=["TLSv1.3"])
+    /subsystem=elytron/server-ssl-context=medimage-ssc:write-attribute(name=cipher-suite-names,value="TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256")
+    run-batch
+end-if
+/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=ssl-context,value=medimage-ssc)

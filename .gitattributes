@@ -4,4 +4,6 @@
 *.cli           text eol=lf
 *.properties    text eol=lf
 *.tsv           text eol=lf
+# sha256sum --check lit les noms de fichiers ligne par ligne : un CR final les rendrait introuvables.
+*.sha256        text eol=lf
 scripts/wildfly/fournis/**  text eol=lf
