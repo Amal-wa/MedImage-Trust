@@ -116,7 +116,7 @@ class TokenSTest {
     }
 
     @Test
-    @DisplayName("Test du professeur : 100 000 chiffrements, 0 nonce en double")
+    @DisplayName("Critère d'acceptation : 100 000 chiffrements, 0 nonce en double")
     void centMilleNoncesSansDoublon() {
         Set<ByteBuffer> nonces = new HashSet<>(2 * NONCE_TEST_COUNT);
         int duplicates = 0;

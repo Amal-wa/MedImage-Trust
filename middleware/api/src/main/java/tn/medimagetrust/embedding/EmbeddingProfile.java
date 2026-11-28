@@ -63,7 +63,7 @@ public final class EmbeddingProfile {
     public static final long MAX_PIXELS = 36_000_000L;
     /**
      * Dimension maximale de {@code rows} et de {@code cols} (SEC-F02, dossier v2.4 : « Rows et Columns ≤ 8 192 »).
-     * Ajout par rapport à la consigne du module : voir README, « Décisions à valider ».
+     * Ajout par rapport à la spécification du module : voir api/docs/embedding.md, « Décisions de conception ».
      */
     public static final int MAX_DIMENSION = 8192;
     /** Profondeur minimale ({@code BitsStored}). */

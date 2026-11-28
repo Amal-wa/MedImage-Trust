@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vérifie que les trois scripts de base jboss-cli fournis par l'enseignant (scripts/wildfly/fournis/) n'ont pas changé.
+# Vérifie que les trois scripts de base jboss-cli fournis (scripts/wildfly/fournis/) n'ont pas changé.
 # Les sommes SHA-256 attendues sont figées dans scripts/wildfly/fournis.sha256. Échec si un fichier diffère ou manque,
 # ou si un fichier inattendu apparaît dans fournis/.
 set -euo pipefail

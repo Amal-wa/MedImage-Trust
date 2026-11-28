@@ -67,7 +67,7 @@ class IamArchitectureTest {
     /** Règle 1 — refus par défaut. */
     @ArchTest
     static final ArchRule R1_REFUS_PAR_DEFAUT = methods().that(RESOURCE_METHOD).should(SECURED)
-            .because("refus par défaut (consigne 4.3) : une ressource non annotée rend la CI rouge");
+            .because("refus par défaut : une ressource non annotée rend la CI rouge");
 
     /** Règle 6 — rien ne dépend de iam (en particulier pas le code commun de core). */
     @ArchTest

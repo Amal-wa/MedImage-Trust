@@ -111,7 +111,7 @@ reproductible.
    symboles récupérés) ; la simulation ci-dessus ne couvre que des erreurs indépendantes.
 4. Recadrage à gauche ou en haut : la grille de blocs se décale, `FBlockReader` ne le compense pas (voir embedding).
 
-## Décisions de conception à valider avec l'équipe (non fixées par le dossier)
+## Décisions de conception (non fixées par le dossier)
 - Étiquettes `MIT-FB-v1` (biais) et `MIT-FD-v1` (dithers) : ajouts de l'équipe.
 - Dithers indexés par l'indice du bloc dans la classe F (pas par son rang 0 à 127).
 - Plus de vote : 1 répétition, un symbole illisible est un effacement, sans majorité possible.

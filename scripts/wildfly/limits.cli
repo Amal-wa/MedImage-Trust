@@ -1,4 +1,4 @@
-# Cloisonnement des ressources (consigne 5.3 b ; dossier v2.6 §6.2, §7.3, SEC08, SEC-F02, SEC-F04).
+# Cloisonnement des ressources (dossier v2.6 §6.2, §7.3, SEC08, SEC-F02, SEC-F04).
 # Valeurs dans <env>.properties :
 #   limits.max-post-size : 81 Mio (fichier de 80 Mio accepté, 81 Mio rejeté) ;
 #   limits.read-timeout  : 120 s (délai d'upload) ;

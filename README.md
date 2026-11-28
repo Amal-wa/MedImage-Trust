@@ -1,6 +1,6 @@
 # MedImage-Trust
 
-Plateforme de protection et de vérification d'images médicales DICOM (projet de Sécurité Applicative, Sup'COM).
+Plateforme de protection et de vérification d'images médicales DICOM.
 Chaque copie émise porte trois marques, écrites seulement dans la zone sans intérêt diagnostique (RONI) :
 
 - **W, watermarking** : preuve d'origine signée Ed25519 par l'établissement émetteur ;
@@ -37,19 +37,19 @@ mvn -B -DskipTests package   # produit api/target/api-1.0.war et iam/target/iam-
 
 ## Branches
 
-`main` est la branche de travail suivie par l'enseignant. Toute modification passe par une branche, puis par une pull
+`main` est la branche de référence, protégée. Toute modification passe par une branche, puis par une pull
 request vers `main` avec la CI au vert.
 
 | Branche | Usage |
 |---|---|
-| `main` | branche de travail suivie par l'enseignant, protégée |
+| `main` | branche de référence, protégée |
 | `feat/<sujet>` | nouvelle fonctionnalité (ex. `feat/embedding`) |
 | `fix/<sujet>` | correction |
 | `chore/<sujet>` | organisation, outillage, documentation (ex. `chore/middleware-structure`) |
 
 ## CI/CD
 
-Chaîne SecDevOps complète, détaillée dans [`docs/ci-cd.md`](docs/ci-cd.md) (schéma, correspondance consigne → job,
+Chaîne SecDevOps complète, détaillée dans [`docs/ci-cd.md`](docs/ci-cd.md) (schéma, correspondance exigence → job,
 protection de `main`, secrets de prod) :
 
 - CI (`.github/workflows/ci.yml`, sur toute branche et toute PR vers `main`) : compilation, tests (ArchUnit, vecteurs

@@ -193,7 +193,7 @@ configure_wildfly() {
 }
 
 # Ajoute à bin/standalone.conf de l'instance $1 les options JVM du projet (une seule fois).
-# - jdk.tls.server.enableStatusRequestExtension=true : OCSP stapling (séance 3 de l'enseignant) ;
+# - jdk.tls.server.enableStatusRequestExtension=true : OCSP stapling ;
 # - jboss.http.port=80, jboss.https.port=443 : les prédicats des .cli testent %p = 80 ou 443.
 #   MIT_HTTP_PORT et MIT_HTTPS_PORT ne servent qu'aux essais sur un poste où 80 ou 443 est déjà pris : sur un autre
 #   port, les prédicats %p ne s'appliquent plus (pas de redirection HTTP → HTTPS, ou pas de HSTS).

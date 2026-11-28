@@ -1,4 +1,4 @@
-# Intégration continue SecDevOps (prompt 08). Correspondance consigne → job : docs/ci-cd.md.
+# Intégration continue SecDevOps (prompt 08). Correspondance exigence → job : docs/ci-cd.md.
 name: CI
 
 on:
@@ -171,7 +171,8 @@ jobs:
     name: banc d'attaques (non bloquant)
     needs: build
     runs-on: ubuntu-latest
-    # Les seuils de récupération attendent la réponse de l'enseignant : le job informe sans bloquer la CI.
+    # Job informatif : une récupération sous 95 % est une dette technique suivie (avertissement) ; les critères
+    # bloquants du programme (PSNR, faux positifs) sont signalés dans le résumé sans bloquer la CI.
     continue-on-error: true
     permissions:
       contents: read

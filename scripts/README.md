@@ -15,7 +15,7 @@ WildFly 42 sert lui-même la PWA et les deux WAR par des hôtes virtuels Underto
 
 | Fichier | Rôle |
 |---|---|
-| `wildfly/fournis/*.cli` | les trois scripts de base fournis par l'enseignant, **jamais modifiés** (sommes figées dans `wildfly/fournis.sha256`) |
+| `wildfly/fournis/*.cli` | les trois scripts de base fournis, **jamais modifiés** (sommes figées dans `wildfly/fournis.sha256`) |
 | `wildfly/default-host.cli`, `add-host.cli`, `add-api.cli` | nos copies, avec une seule correction (CORS avec cookies) : voir [`wildfly/MODIFICATIONS.md`](wildfly/MODIFICATIONS.md) |
 | `wildfly/tls.cli` | magasin PKCS#12, gestionnaire de clés et `server-ssl-context` Elytron, **TLSv1.3 seulement**, sur l'écouteur HTTPS |
 | `wildfly/limits.cli` | `max-post-size` (81 Mio) et `read-timeout` (120 s) de l'écouteur HTTPS ; pool `medimage-imaging` (4 fils, file de 20, délai de 30 s) |
@@ -46,8 +46,8 @@ scripts/update-wildfly.sh dev      # quand une nouvelle version de WildFly sort
 2. dev : génère un certificat autosigné EC P-256 pour `*.medimage.localhost` avec `keytool` (le rôle que tient mkcert
    sur un poste), et exporte `tls/medimage-dev.crt` (curl) et `tls/truststore.p12` (Java) ; prod : convertit le
    certificat Let's Encrypt en PKCS#12 ;
-3. ajoute à `bin/standalone.conf` : `-Djdk.tls.server.enableStatusRequestExtension=true` (OCSP stapling, séance 3
-   de l'enseignant), `-Djboss.http.port=80` et `-Djboss.https.port=443` ;
+3. ajoute à `bin/standalone.conf` : `-Djdk.tls.server.enableStatusRequestExtension=true` (OCSP stapling),
+   `-Djboss.http.port=80` et `-Djboss.https.port=443` ;
 4. démarre WildFly, puis applique `tls.cli`, `limits.cli`, `default-host.cli`, `add-host.cli` (admin),
    `add-api.cli` (api), `add-api.cli` (iam, propriétés `iam.api.*`), `api-properties.cli`, et recharge.
 
@@ -143,7 +143,7 @@ navigateur pour éviter l'avertissement.
 1. **Domaine deSEC** : créer `<nom>.dedyn.io` sur https://desec.io, puis les enregistrements `www`, `api`, `iam`,
    `admin` (A/AAAA vers l'adresse du serveur). Créer un jeton d'API deSEC limité à ce domaine ; il sert uniquement au
    défi DNS-01, fourni par le secret `DESEC_TOKEN`, **jamais écrit dans le dépôt**.
-2. **CAA** (consigne de l'enseignant), trois enregistrements sur le domaine :
+2. **CAA** (seule Let's Encrypt peut émettre pour le domaine), trois enregistrements sur le domaine :
 
    ```
    <domaine>.  CAA  0 issue     "letsencrypt.org"

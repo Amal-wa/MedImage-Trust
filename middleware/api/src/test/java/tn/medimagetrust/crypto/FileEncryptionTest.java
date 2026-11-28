@@ -13,7 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Fichiers au repos : AES-256-GCM, clé par fichier, AAD liée à l'objet (v2.4 §8.2, consigne du professeur). */
+/** Fichiers au repos : AES-256-GCM, clé par fichier, AAD liée à l'objet (v2.4 §8.2). */
 class FileEncryptionTest {
 
     private CryptoService crypto;

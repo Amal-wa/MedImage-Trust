@@ -127,8 +127,8 @@ class DctQimTest {
     @Test
     @DisplayName("Bruit gaussien σ = 2 : taux conforme à la théorie 1 − 2Q(Δ/4σ) ≈ 86,6 %, sous l'objectif de 95 %")
     void noiseSigmaTwoMatchesTheory() {
-        // Écart à la consigne : ≥ 95 % à σ = 2 est impossible avec Δ = 12 (la marge de décision vaut Δ/4 = 3,
-        // soit 1,5 σ). Voir README, « Décisions à valider ». Ce test fige le comportement mesuré.
+        // Écart à l'objectif : ≥ 95 % à σ = 2 est impossible avec Δ = 12 (la marge de décision vaut Δ/4 = 3,
+        // soit 1,5 σ). Voir api/docs/embedding.md, « Limites connues ». Ce test fige le comportement mesuré.
         double rate = readRateUnderNoise(2.0);
         assertTrue(rate > 0.83 && rate < 0.90, "taux mesuré : " + rate);
     }
