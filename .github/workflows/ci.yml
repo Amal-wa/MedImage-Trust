@@ -112,6 +112,9 @@ jobs:
 
   sbom:
     name: SBOM CycloneDX
+    # Après build : setup-java n'enregistre le cache Maven qu'une fois par clé (premier job terminé). En parallèle,
+    # sbom, plus court, enregistrerait un cache incomplet ; après build, il restaure le cache complet de build.
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -123,7 +126,8 @@ jobs:
           java-version: '25'
           cache: maven
       - name: Nomenclature agrégée des trois modules
-        run: mvn -B -f middleware/pom.xml org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom
+        # Version du plugin épinglée dans le pluginManagement de middleware/pom.xml (2.9.3).
+        run: mvn -B -f middleware/pom.xml cyclonedx:makeAggregateBom
       - uses: actions/upload-artifact@v7
         with:
           name: sbom-cyclonedx

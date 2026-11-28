@@ -73,6 +73,15 @@
           <artifactId>exec-maven-plugin</artifactId>
           <version>3.5.0</version>
         </plugin>
+        <!--
+          SBOM CycloneDX (job sbom de ci.yml) : version épinglée ici, appel par le préfixe court
+          « mvn -B -f middleware/pom.xml cyclonedx:makeAggregateBom ». Lié à aucune phase : verify ne le lance pas.
+        -->
+        <plugin>
+          <groupId>org.cyclonedx</groupId>
+          <artifactId>cyclonedx-maven-plugin</artifactId>
+          <version>2.9.3</version>
+        </plugin>
       </plugins>
     </pluginManagement>
   </build>

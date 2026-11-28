@@ -1,15 +1,27 @@
-# Mises à jour de dépendances (prompt 08) : bibliothèques Maven du middleware et actions GitHub épinglées.
+# Mises à jour de dépendances : bibliothèques Maven du middleware et actions GitHub épinglées.
+#
+# Mises à jour de version : regroupées en une seule PR par écosystème et par semaine (groups, applies-to:
+# version-updates), au plus 3 PR ouvertes. Mises à jour de sécurité : jamais regroupées, une PR immédiate par alerte
+# (le groupe ne s'applique pas à elles, et open-pull-requests-limit ne compte que les mises à jour de version).
 version: 2
 updates:
   - package-ecosystem: maven
     directory: /middleware
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels: [dependencies]
+    groups:
+      maven-hebdomadaire:
+        applies-to: version-updates
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels: [dependencies, ci]
+    groups:
+      actions-hebdomadaire:
+        applies-to: version-updates
+        patterns: ["*"]
