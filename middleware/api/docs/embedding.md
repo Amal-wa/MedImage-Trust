@@ -124,7 +124,7 @@ dans les candidats dès que l'Otsu de la copie reste à ± 4 du seuil d'origine.
 ## Condensats : encodage exact (à reproduire à l'identique dans `watermark`)
 
 **Origine.** Les trois formules viennent du §8.3 de la v2.4, qui précise seulement « version 1, big-endian ». Le reste
-de l'encodage **ne vient pas du dossier** mais de la consigne de ce module :
+de l'encodage **ne vient pas du dossier** mais de la spécification de ce module :
 
 - les tailles des champs : 4 octets pour `rows` et `cols`, 1 pour `bitsStored`, 2 par pixel ;
 - l'absence de terminateur et de préfixe de longueur pour les étiquettes ;
@@ -290,71 +290,77 @@ La correspondance suit les conditions G de la v2.4 (« conditions pour marquer u
 | G6 : après marquage, ROI identique, écarts ≤ 1 et ≤ 12, PSNR ≥ 40 dB | SEC-M03 |
 | G7 : original jamais écrit | SEC-M06 |
 
-## Décisions à valider
+## Décisions de conception
 
-1. **Garde (étape 7) — lecture littérale.** Un seul pixel de la RONI à moins de 4 niveaux de q du seuil fait refuser
-   l'image (`GUARD_VIOLATION`). Variante possible : exclure le bloc fautif de la RONI au lieu de refuser l'image (plus
-   d'images marquables, mais le masque dépend alors de la garde, qu'il faudra reproduire à l'identique dans
-   `candidates`).
-2. **Fond à 0 : la couche F casse au bornage (mesuré, non corrigé).** Sur un fond à 0 (scanner, IRM), le bornage à 0
-   après la DCT inverse casse 6,34 % des bits F ; le contrôle final, qui exige que les bits F écrits soient relus
-   identiques, annule **100 %** des copies (`FINAL_CHECK_FAILED:F_READBACK_MISMATCH`). Ces images sont donc de fait
-   non marquables, par échec fermé. Je n'ai changé ni Δ, ni les rangs, ni le contrôle. Pistes à trancher en équipe :
-   (a) garder ce comportement ; (b) ne plus exiger la relecture exacte de F au contrôle final et laisser Tardos
-   absorber les erreurs (affaiblit SEC-M03) ; (c) rendre inéligibles à F les blocs trop proches de 0 ou du maximum,
-   avec un critère qui donne le même résultat sur l'original et sur la copie (délicat : les indices F du vérificateur
-   doivent rester identiques).
-3. **Robustesse σ = 2 : l'objectif « ≥ 95 % » est impossible avec Δ = 12.** La marge de décision de la QIM vaut
-   Δ/4 = 3, soit 1,5 σ pour σ = 2 : théorie 1 − 2Q(1,5) ≈ 86,6 %, mesuré 86,40 %. Les 95 % sont atteints vers
-   σ ≈ 1,45 (99,39 % à σ = 1, 94,36 % à σ = 1,5). Le test écrit vérifie donc : σ = 1 → ≥ 95 %, et σ = 2 → taux
-   conforme à la théorie (entre 83 % et 90 %). Augmenter Δ n'est pas possible sans casser le profil : au-delà de
-   Δ ≈ 13, l'écart par pixel dépasse 12 et la variation de q atteint 4 niveaux, ce qui casse la garde et donc SEC-M01.
-   L'objectif SEC-D04 (≥ 95 % des symboles après JPEG Q75 ou redimensionnement à 75 %) est à confirmer par le banc
-   d'attaques de la CI : il est à risque.
-4. **Limite connue du profil (§4.1) : corps qui couvre la majorité du bord.** La polarité s'inverse et le corps est
-   pris pour du fond ; l'image est **acceptée** avec une « RONI » dans le corps (`RoniDetectorTest.knownLimitation…`,
-   disque de rayon 300 dans 512 × 512). Seule la validation humaine obligatoire (SEC-M02) rattrape ce cas. Un disque
-   un peu plus petit (rayon 285), qui touche les quatre bords sans en couvrir la majorité, est refusé
-   (`TOO_FEW_RONI_BLOCKS`).
-5. **Dimensions : limite de 8 192 par côté ajoutée** (`MAX_DIMENSION`), en plus de `rows × cols ≤ 36 000 000`, parce
+Choix retenus là où la v2.4 laisse une marge, avec leur raison.
+
+1. **Garde (étape 7) : lecture littérale.** Un seul pixel de la RONI à moins de 4 niveaux de q du seuil fait refuser
+   l'image (`GUARD_VIOLATION`). Raison : le masque RONI ne dépend pas de la garde, et `candidates` le reproduit donc
+   à l'identique sans autre calcul. Variante écartée : exclure le bloc fautif de la RONI au lieu de refuser l'image
+   (plus d'images marquables, mais un masque qui dépend de la garde et qu'il faudrait reproduire dans `candidates`).
+2. **Dimensions : limite de 8 192 par côté** (`MAX_DIMENSION`), en plus de `rows × cols ≤ 36 000 000`, parce
    que la v2.4 (SEC-F02) l'exige. `rows` ou `cols` ≤ 0 → `INVALID_INPUT` ; dimensions trop grandes ou produit qui
    déborde d'un `int` → `IMAGE_TOO_LARGE` (calcul en `long`). `bitsStored` hors de [8, 16] → `INVALID_INPUT`.
-6. **Égalités d'Otsu** : moyenne entière des seuils ex aequo (voir Algorithme). Avec la règle « premier maximum »
+3. **Égalités d'Otsu** : moyenne entière des seuils ex aequo (voir Algorithme). Avec la règle « premier maximum »
    (celle de nombreuses bibliothèques), le seuil tombe au sommet du bruit du fond : les pixels de fond les plus clairs
    sont alors à moins de 4 niveaux du seuil, et une image à fond bien séparé (comme le fantôme normal) serait refusée
    pour `GUARD_VIOLATION`. C'est un choix d'implémentation que la v2.4 ne fixe pas ; le vérificateur utilise le même
    code, donc il reste cohérent.
    Histogramme à une seule valeur : `T` = cette valeur.
-7. **Ordre et forme des candidats** : `T, T−1, T+1, …` (le plus probable d'abord), polarité recalculée pour chaque
+4. **Ordre et forme des candidats** : `T, T−1, T+1, …` (le plus probable d'abord), polarité recalculée pour chaque
    seuil, seuils hors limites ignorés, doublons supprimés. Le résultat est une liste de `RoniProfile`.
-8. **Session plus stricte que la consigne** : au plus 128 blocs F, chacun écrit une seule fois ; F interdit après S ;
-   S et W écrits une seule fois ; `finish()` exige S et W ; F n'est pas obligatoire (0 à 128 blocs) — faut-il exiger
-   exactement 128 blocs ? **Toute** exception (même une entrée invalide) place la session en échec définitif.
-9. **Sous-motifs ajoutés au contrôle final** : `DEVIATION_EXCEEDED` (écarts ≤ 1 et ≤ 12, SEC-M03 b) et
+5. **Session plus stricte que la spécification du module** : au plus 128 blocs F, chacun écrit une seule fois ; F
+   interdit après S ; S et W écrits une seule fois ; `finish()` exige S et W. F n'est pas obligatoire (0 à 128 blocs) :
+   le nombre de blocs F écrits relève de la couche fingerprint, pas de la session. **Toute** exception (même une entrée
+   invalide) place la session en échec définitif.
+6. **Sous-motifs ajoutés au contrôle final** : `DEVIATION_EXCEEDED` (écarts ≤ 1 et ≤ 12, SEC-M03 b) et
    `UNUSED_BLOCK_MODIFIED` (« les blocs réservés mais non utilisés ne sont pas modifiés », §4.1). Ordre des contrôles :
    ROI, écarts, PSNR, relectures S, W, F, masque.
-10. **Arrondis** : `floor(x + 0,5)` pour la QIM et la DCT inverse ; égalité de distance à l'extraction → bit 0.
-11. **`Photometric` n'intervient pas dans la détection** : la polarité vient du bord, comme le dit la v2.4.
-12. **Mémoire à 36 Mpx — corrigé.** `PixelImage` stocke maintenant des `char[]`, les masques sont compactés à
-    1 bit par pixel, et l'image marquée reprend la copie de travail sans copie. Pic estimé ≈ 165 Mio (173 Mo).
-    **Mesuré** sur 6 000 × 6 000 à 16 bits avec `-Xmx300m` : 147,3 Mio vivants, 174,3 Mio au plus en comptant les
-    déchets (182,8 Mo), sous le budget de 216 Mo du dossier et le plafond de 250 Mio (voir « Bilan mémoire »).
-    Conséquences sur l'interface : le constructeur de `PixelImage` reçoit un `char[]`, et `pixels()` renvoie un
-    `char[]` ; `PixelImage.fromInts(...)` garde l'entrée en `int[]`. `PixelImage` est une classe finale et non plus un
-    `record` (mêmes accesseurs), pour pouvoir reprendre la copie de travail sans troisième copie.
-13. **Point d'injection de défaut** : `EmbeddingSession.injectFault` (visibilité paquet) sert au test de mutation
-    SEC-M03. Pour qu'aucun autre code ne puisse l'appeler, il faudrait sceller le paquet (`module-info.java`) au moment
-    de l'intégration dans `medimage-web`.
-14. **SHA-256 indisponible** (impossible dans une JVM conforme) → `ILLEGAL_STATE`, pour rester dans la liste fermée
+7. **Arrondis** : `floor(x + 0,5)` pour la QIM et la DCT inverse ; égalité de distance à l'extraction → bit 0.
+8. **`Photometric` n'intervient pas dans la détection** : la polarité vient du bord, comme le dit la v2.4.
+9. **Mémoire à 36 Mpx.** `PixelImage` stocke des `char[]`, les masques sont compactés à 1 bit par pixel, et l'image
+   marquée reprend la copie de travail sans copie. Pic estimé ≈ 165 Mio (173 Mo).
+   **Mesuré** sur 6 000 × 6 000 à 16 bits avec `-Xmx300m` : 147,3 Mio vivants, 174,3 Mio au plus en comptant les
+   déchets (182,8 Mo), sous le budget de 216 Mo du dossier et le plafond de 250 Mio (voir « Bilan mémoire »).
+   Conséquences sur l'interface : le constructeur de `PixelImage` reçoit un `char[]`, et `pixels()` renvoie un
+   `char[]` ; `PixelImage.fromInts(...)` garde l'entrée en `int[]`. `PixelImage` est une classe finale et non plus un
+   `record` (mêmes accesseurs), pour pouvoir reprendre la copie de travail sans troisième copie.
+10. **SHA-256 indisponible** (impossible dans une JVM conforme) → `ILLEGAL_STATE`, pour rester dans la liste fermée
     des motifs.
-15. **Incohérence relevée dans la v2.4** (non corrigée, `docs/` n'est pas à moi) : §8.4 V3 dit encore « lire W dans
-    la classe W (rangs 0 à 2 modulo 10) », un reste de la v2.3. Ce module lit W dans les 26 blocs W.
-16. **Écarts avec `medimage-fingerprint`** (v2.3, non modifié) : `FPartition` et `FingerprintParams` (voir le tableau de
-    l'interface). Le commentaire du `pom.xml` parent « à venir : … medimage-embedding … » n'a pas été retouché : la
-    seule modification du parent est l'ajout du module et de son entrée `dependencyManagement`.
-17. **SEC-M03 (c) : aucun module ne le couvre pour l'instant.** Le point (c) exige des attributs d'interprétation
-    inchangés : Rows, Columns, BitsAllocated, BitsStored, HighBit, PixelRepresentation, PhotometricInterpretation,
-    PixelSpacing, RescaleSlope et Intercept, WindowCenter et Width, VOI LUT, PixelPaddingValue, orientation et position.
-    Ce module ne voit que les pixels et deux indicateurs (annotation incrustée, overlay) : il ne peut pas faire ce
-    contrôle. Il faut l'attribuer à `medimage-dicom` ou à `medimage-web`, par une comparaison de l'en-tête de l'original
-    et de la copie avant l'émission. Sinon SEC-M03 reste partiellement couvert.
+
+## Limites connues
+
+1. **Fond à 0 : la couche F casse au bornage (mesuré).** Sur un fond à 0 (scanner, IRM), le bornage à 0 après la DCT
+   inverse casse 6,34 % des bits F ; le contrôle final, qui exige que les bits F écrits soient relus identiques,
+   annule **100 %** des copies (`FINAL_CHECK_FAILED:F_READBACK_MISMATCH`). Ces images sont donc non marquables, par
+   échec fermé ; Δ, les rangs et le contrôle sont inchangés. Évolutions possibles : (a) conserver ce comportement ;
+   (b) ne plus exiger la relecture exacte de F au contrôle final et laisser Tardos absorber les erreurs (affaiblit
+   SEC-M03) ; (c) rendre inéligibles à F les blocs trop proches de 0 ou du maximum, avec un critère qui donne le même
+   résultat sur l'original et sur la copie (délicat : les indices F du vérificateur doivent rester identiques).
+2. **Robustesse σ = 2 : l'objectif « ≥ 95 % » est hors d'atteinte avec Δ = 12.** La marge de décision de la QIM vaut
+   Δ/4 = 3, soit 1,5 σ pour σ = 2 : théorie 1 − 2Q(1,5) ≈ 86,6 %, mesuré 86,40 %. Les 95 % sont atteints vers
+   σ ≈ 1,45 (99,39 % à σ = 1, 94,36 % à σ = 1,5). Le test vérifie donc : σ = 1 → ≥ 95 %, et σ = 2 → taux conforme
+   à la théorie (entre 83 % et 90 %). Augmenter Δ n'est pas possible sans casser le profil : au-delà de Δ ≈ 13,
+   l'écart par pixel dépasse 12 et la variation de q atteint 4 niveaux, ce qui casse la garde et donc SEC-M01.
+   L'objectif SEC-D04 (≥ 95 % des symboles après JPEG Q75 ou redimensionnement à 75 %) est mesuré par le banc de
+   robustesse de la CI (`AttackBench`, voir [`docs/ci-cd.md`](../../../docs/ci-cd.md)) : il n'est pas atteint en
+   12 bits, ni après JPEG Q75 en 8 bits. Suivi comme dette technique (pas QIM proportionnel à la profondeur, prévu).
+3. **Corps qui couvre la majorité du bord (profil §4.1).** La polarité s'inverse et le corps est pris pour du fond ;
+   l'image est **acceptée** avec une « RONI » dans le corps (`RoniDetectorTest.knownLimitation…`, disque de rayon 300
+   dans 512 × 512). Seule la validation humaine obligatoire (SEC-M02) rattrape ce cas. Un disque un peu plus petit
+   (rayon 285), qui touche les quatre bords sans en couvrir la majorité, est refusé (`TOO_FEW_RONI_BLOCKS`).
+4. **Point d'injection de défaut** : `EmbeddingSession.injectFault` (visibilité paquet) sert au test de mutation
+   SEC-M03. Pour qu'aucun autre code ne puisse l'appeler, il faudrait sceller le paquet (`module-info.java`) au moment
+   de l'intégration dans `medimage-web`.
+5. **Incohérence relevée dans la v2.4** (non corrigée ici : ce module ne modifie pas le dossier de conception) : §8.4
+   V3 dit encore « lire W dans la classe W (rangs 0 à 2 modulo 10) », un reste de la v2.3. Ce module lit W dans les
+   26 blocs W.
+6. **Écarts avec `medimage-fingerprint`** (v2.3, non modifié) : `FPartition` et `FingerprintParams` (voir le tableau de
+   l'interface). Le commentaire du `pom.xml` parent « à venir : … medimage-embedding … » n'a pas été retouché : la
+   seule modification du parent est l'ajout du module et de son entrée `dependencyManagement`.
+7. **SEC-M03 (c) : aucun module ne le couvre pour l'instant.** Le point (c) exige des attributs d'interprétation
+   inchangés : Rows, Columns, BitsAllocated, BitsStored, HighBit, PixelRepresentation, PhotometricInterpretation,
+   PixelSpacing, RescaleSlope et Intercept, WindowCenter et Width, VOI LUT, PixelPaddingValue, orientation et position.
+   Ce module ne voit que les pixels et deux indicateurs (annotation incrustée, overlay) : il ne peut pas faire ce
+   contrôle. Il faut l'attribuer à `medimage-dicom` ou à `medimage-web`, par une comparaison de l'en-tête de l'original
+   et de la copie avant l'émission. Sinon SEC-M03 reste partiellement couvert.

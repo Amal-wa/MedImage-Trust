@@ -1,6 +1,6 @@
 # Différences entre nos scripts jboss-cli et les scripts de base fournis
 
-Les trois scripts fournis par l'enseignant sont gardés **intacts** dans [`fournis/`](fournis/) (consigne : isoler les bases
+Les trois scripts de base fournis sont gardés **intacts** dans [`fournis/`](fournis/) (principe : isoler les bases
 fournies). Leurs sommes SHA-256 sont figées dans [`fournis.sha256`](fournis.sha256) ; la CI (job `fournis`,
 `scripts/check-fournis.sh`) échoue si l'un d'eux change.
 

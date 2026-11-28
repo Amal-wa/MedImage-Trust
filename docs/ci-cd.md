@@ -42,7 +42,7 @@ flowchart LR
 | Scripts shell propres | `shellcheck` (tous les `scripts/**/*.sh`) | oui |
 | Workflows GitHub Actions valides | `actionlint` (binaire officiel `rhysd/actionlint` 1.7.12, somme SHA-256 épinglée dans `ci.yml` ; analyse aussi les blocs `run:` avec ShellCheck) | oui |
 | Scripts de base fournis intacts | `fournis` (`scripts/check-fournis.sh`, sommes SHA-256 de `scripts/wildfly/fournis/`) | oui |
-| Robustesse du marquage (consigne 4.6) : JPEG Q75 en 8 et 12 bits, redimensionnement 75 %, PSNR, faux positifs | `attack-bench` (`AttackBench`, artefact `banc-attaques`, rapport dans le résumé) | non (`continue-on-error`) ; le programme échoue si PSNR < 40 dB ou faux positifs > 1 % |
+| Banc de robustesse (SEC-D04) : JPEG Q75 en 8 et 12 bits, redimensionnement 75 %, PSNR, faux positifs | `attack-bench` (`AttackBench`, artefact `banc-attaques`, rapport dans le résumé) | non (`continue-on-error`) ; le programme échoue si PSNR < 40 dB ou faux positifs > 1 % |
 | Déploiement reproductible de WildFly 42 (hôtes virtuels, TLS 1.3, limites) | `cd.yml` › `deploy-dev` : `install-wildfly.sh dev` | oui |
 | Test de fumée (santé, en-têtes, HTTPS, TLS 1.2 refusé, 401 problem+json) | `deploy-dev` : `deploy.sh dev` | oui ; `/api/whoami` en 404 n'est qu'un avertissement jusqu'au prompt 12 |
 | Objectif SRE : p95 < 2 s (SEC-R02), aucune requête suspendue > 10 s | `deploy-dev` : `LoadBench` (500 + 200 requêtes à 20 en parallèle, rafale de 200), tas du serveur avant et après | oui |
@@ -79,8 +79,10 @@ moins d'un niveau de gris, et l'interpolation du redimensionnement déplace les 
 est effacé (≈ 50 % des bits, le hasard), sans fausse accusation. **Correction prévue au prompt 09 : Δ proportionnel à
 la profondeur.** D'ici là, une récupération sous 95 % reste un avertissement (`::warning::`), et le job ne bloque pas.
 
-**Question posée à l'enseignant** : le seuil « récupération ≥ 95 % » porte-t-il sur les bits F ou sur l'attribution ?
-Et le JPEG Q75 s'applique-t-il à une image 8 bits ou 12 bits ?
+**Critère de mesure.** La récupération est mesurée de deux façons (taux de bits F relus, attribution du vrai
+destinataire) et sur deux profondeurs (8 et 12 bits). Critère bloquant : PSNR ≥ 40 dB et faux positifs ≤ 1 %. Une
+récupération des bits sous 95 % produit un avertissement ; elle est suivie comme une dette technique (pas QIM
+proportionnel à la profondeur, prévu).
 
 ## ZAP baseline : règles ignorées
 

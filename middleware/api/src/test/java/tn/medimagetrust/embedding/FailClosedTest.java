@@ -122,7 +122,7 @@ class FailClosedTest {
     @Test
     @DisplayName("Fond à 0 : le bornage casse des bits F, le contrôle final annule la copie (F_READBACK_MISMATCH)")
     void zeroBackgroundIsCancelledNotReturnedBroken() {
-        // Comportement mesuré, non corrigé en douce : voir README, « Décisions à valider ».
+        // Comportement mesuré, non corrigé en douce : voir api/docs/embedding.md, « Limites connues ».
         Random rnd = new Random(TEST_SEED_FAIL);
         EmbeddingSession s = EmbeddingSession.open(Phantoms.zeroBackground().image());
         Markings.writeF(s, rnd);

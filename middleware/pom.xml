@@ -11,7 +11,7 @@
   <name>MedImage-Trust :: middleware (parent)</name>
 
   <!--
-    Trois modules seulement (consigne de l'enseignant) :
+    Trois modules seulement (décision d'architecture) :
     core (jar, commun aux deux WAR), api (war, tout le code développé), iam (war, authentification à venir).
   -->
   <modules>

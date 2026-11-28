@@ -39,7 +39,7 @@ import tn.medimagetrust.fingerprint.Prf;
 import tn.medimagetrust.fingerprint.TardosCodeGenerator;
 
 /**
- * Banc d'attaques (consigne 4.6) sur la vraie chaîne : {@code EmbeddingSession} (RONI, F par QIM, S, W, contrôle
+ * Banc de robustesse (SEC-D04) sur la vraie chaîne : {@code EmbeddingSession} (RONI, F par QIM, S, W, contrôle
  * final) et {@code FingerprintService} (code de Tardos, analyse). Les fantômes viennent de
  * {@link Phantoms} (tests d'embedding), réutilisés sans copie.
  *
@@ -49,7 +49,7 @@ import tn.medimagetrust.fingerprint.TardosCodeGenerator;
  * l'échelle d'origine) ; redimensionnement à 75 % puis retour à la taille d'origine, en bilinéaire (l'analyste connaît
  * les dimensions de l'émission). Tout passe par ImageIO et Java 2D, sans dépendance externe.</p>
  *
- * <p>Seuils de l'enseignant : récupération ≥ 95 %, faux positifs ≤ 1 %, PSNR ≥ 40 dB. Le programme sort avec le code 1
+ * <p>Critères d'acceptation : récupération ≥ 95 %, faux positifs ≤ 1 %, PSNR ≥ 40 dB. Le programme sort avec le code 1
  * si le PSNR minimal est sous 40 dB ou si les faux positifs dépassent 1 % ; une récupération sous 95 % produit un
  * avertissement GitHub ({@code ::warning::}) sans échec.</p>
  *
@@ -162,7 +162,7 @@ public final class AttackBench {
                 }
                 if (s.recovery() < MIN_RECOVERY) {
                     System.out.printf(Locale.ROOT,
-                            "::warning::%s, %s : récupération des bits F %.2f %% < 95 %% (question posée à l'enseignant)%n",
+                            "::warning::%s, %s : récupération des bits F %.2f %% < 95 %% (dette technique suivie : pas QIM proportionnel à la profondeur)%n",
                             r.name, s.name, 100 * s.recovery());
                 }
             }
@@ -337,11 +337,11 @@ public final class AttackBench {
 
     static String markdown(List<PhantomResult> results, int copies) {
         StringBuilder sb = new StringBuilder();
-        sb.append("# Banc d'attaques (consigne 4.6)\n\n");
+        sb.append("# Banc de robustesse (SEC-D04)\n\n");
         sb.append(String.format(Locale.ROOT, "Copies demandées par fantôme : %d ; destinataires candidats : %d ; "
                 + "JPEG qualité %.2f ; redimensionnement %.0f %% puis retour, bilinéaire.%n%n",
                 copies, RECIPIENTS, JPEG_QUALITY, RESIZE_FACTOR * 100));
-        sb.append("Seuils de l'enseignant : récupération ≥ 95 % (avertissement), faux positifs ≤ 1 % (bloquant), ")
+        sb.append("Critères d'acceptation : récupération ≥ 95 % (avertissement), faux positifs ≤ 1 % (bloquant), ")
                 .append("PSNR ≥ 40 dB (bloquant).\n\n");
         sb.append("## Marquage\n\n| Fantôme | Copies marquées | Refusées | Motifs de refus | PSNR moyen | PSNR minimal |\n")
                 .append("|---|---|---|---|---|---|\n");
@@ -367,11 +367,11 @@ public final class AttackBench {
             sb.append(String.format(Locale.ROOT, "| %s | %d | %d | %s |%n", r.name, r.unmarkedAnalyses,
                     r.unmarkedAccusations, pct(r.unmarkedFalsePositiveRate())));
         }
-        sb.append("\n## Question posée à l'enseignant\n\n")
-                .append("Le seuil « récupération ≥ 95 % » porte-t-il sur les **bits** F relus ou sur l'**attribution** ")
-                .append("(le vrai destinataire accusé) ? Et le JPEG Q75 s'entend-il sur une image **8 bits** ou ")
-                .append("**12 bits** ? Le banc rapporte les deux mesures et les deux profondeurs ; en attendant la ")
-                .append("réponse, une récupération des bits sous 95 % n'est qu'un avertissement.\n")
+        sb.append("\n## Critère de mesure\n\n")
+                .append("La récupération est mesurée de deux façons (taux de bits F relus, attribution du vrai ")
+                .append("destinataire) et sur deux profondeurs (8 et 12 bits). Critère bloquant : PSNR ≥ 40 dB et faux ")
+                .append("positifs ≤ 1 %. Une récupération des bits sous 95 % produit un avertissement ; elle est suivie ")
+                .append("comme une dette technique (pas QIM proportionnel à la profondeur, prévu).\n")
                 .append("\n## Cause de l'échec en 12 bits\n\n")
                 .append("**Pas QIM fixe Δ = 12 quelle que soit la profondeur** (`EmbeddingProfile.QIM_DELTA`, en valeurs ")
                 .append("stockées). En 12 bits (4096 niveaux), ce pas est trop petit pour la dynamique de l'image : le ")

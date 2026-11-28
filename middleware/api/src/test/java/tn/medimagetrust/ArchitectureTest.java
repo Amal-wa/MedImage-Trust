@@ -36,7 +36,7 @@ import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 /**
- * Tests d'architecture du module api (consigne 4.3 : « test d'architecture sur les annotations de sécurité »).
+ * Tests d'architecture du module api (exigence : « test d'architecture sur les annotations de sécurité »).
  *
  * <p>Depuis la fusion des six anciens modules Maven en un seul module api, ce sont ces règles qui gardent les
  * frontières que Maven imposait. Seul le code de production est analysé ({@link ImportOption.DoNotIncludeTests}) ;
@@ -89,7 +89,7 @@ class ArchitectureTest {
     /** Règle 1 — refus par défaut : aucune méthode de ressource sans annotation de sécurité. */
     @ArchTest
     static final ArchRule R1_REFUS_PAR_DEFAUT = methods().that(RESOURCE_METHOD).should(SECURED)
-            .because("refus par défaut (consigne 4.3) : une ressource non annotée rend la CI rouge");
+            .because("refus par défaut : une ressource non annotée rend la CI rouge");
 
     /** Aucune dépendance vers un package du projet hors de {@code allowed}. */
     static ArchRule onlyDependsOn(String pkg, String reason, String... allowed) {

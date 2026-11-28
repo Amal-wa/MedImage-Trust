@@ -154,7 +154,7 @@ class RoniDetectorTest {
         Phantoms.Phantom ph = Phantoms.bodyCoveringBorder();
         RoniProfile p = RoniDetector.detect(ph.image());
         // Le profil accepte l'image avec la polarité inversée : la « RONI » est dans le corps.
-        // Seule la validation humaine obligatoire (SEC-M02) rattrape ce cas : voir README, « Décisions à valider ».
+        // Seule la validation humaine obligatoire (SEC-M02) rattrape ce cas : voir api/docs/embedding.md, « Limites connues ».
         assertEquals(BackgroundPolarity.LIGHT, p.polarity());
         boolean roniInBody = false;
         for (int i = 0; i < p.rows() * p.cols() && !roniInBody; i++) {

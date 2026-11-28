@@ -1,4 +1,4 @@
-# Déploiement continu (prompt 08). Correspondance consigne → job : docs/ci-cd.md.
+# Déploiement continu (prompt 08). Correspondance exigence → job : docs/ci-cd.md.
 #
 # deploy-dev : après une CI réussie sur main (ou à la demande), WildFly 42 est installé dans le runner sur les ports
 # 80 et 443 par les scripts du dépôt, les WAR sont déployés et le test de fumée de deploy.sh s'exécute ; puis banc de
