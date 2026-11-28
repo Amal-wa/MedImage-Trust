@@ -17,6 +17,7 @@ flowchart LR
         alint["actionlint<br/>binaire épinglé, somme vérifiée"]
         attack["banc d'attaques<br/>(non bloquant)"]
         build --> attack
+        build --> sbom
     end
 
     CI -- "succès, push sur main" --> dev
@@ -38,7 +39,8 @@ flowchart LR
 | Aucun secret dans le dépôt | `gitleaks` (historique complet, `.gitleaks.toml` : une seule exception, le PDF du dossier) | oui |
 | Analyse statique de sécurité | `codeql` (Java, `security-extended`, résultats dans l'onglet Security) | alertes dans Security |
 | Dépendances vulnérables | `dependency-review` (PR, échec dès la gravité `high`) ; Dependabot chaque semaine | oui (PR) |
-| Nomenclature logicielle | `sbom` (CycloneDX 2.9.3, agrégée, artefact `sbom-cyclonedx`) | oui |
+| Nomenclature logicielle | `sbom` (CycloneDX 2.9.3, épinglé dans le `pluginManagement` de `middleware/pom.xml`, agrégée, artefact `sbom-cyclonedx`) | oui |
+| Intégrité des dépendances Maven | `middleware/.mvn/maven.config` : `--strict-checksums`, un artefact dont le condensat ne correspond pas fait échouer le build (tous les jobs Maven) | oui |
 | Scripts shell propres | `shellcheck` (tous les `scripts/**/*.sh`) | oui |
 | Workflows GitHub Actions valides | `actionlint` (binaire officiel `rhysd/actionlint` 1.7.12, somme SHA-256 épinglée dans `ci.yml` ; analyse aussi les blocs `run:` avec ShellCheck) | oui |
 | Scripts de base fournis intacts | `fournis` (`scripts/check-fournis.sh`, sommes SHA-256 de `scripts/wildfly/fournis/`) | oui |
@@ -55,13 +57,57 @@ Commandes locales équivalentes :
 
 ```
 mvn -B -f middleware/pom.xml clean verify
-mvn -B -f middleware/pom.xml -pl core -am install -DskipTests
-mvn -B -f middleware/pom.xml -pl api test-compile exec:java@attack-bench   # rapport : middleware/api/target/bench/
-mvn -B -f middleware/pom.xml -pl api test-compile exec:java@load-bench     # contre un WildFly déployé
+mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java@attack-bench   # rapport : middleware/api/target/bench/
+mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java@load-bench     # contre un WildFly déployé
 ```
 
 `exec:java@<id>` désigne une exécution nommée du pom d'api : la configuration du plugin y fixe déjà `mainClass`
-(simulateur de collusions), que `-Dexec.mainClass` ne remplacerait pas.
+(simulateur de collusions), que `-Dexec.mainClass` ne remplacerait pas. Les bancs tournent dans le réacteur, sans
+installation : `-am` compile `core`, qu'api prend dans `core/target/classes`. Maven exécute alors `exec:java` dans
+chaque module du réacteur ; le POM parent le saute par défaut (`skip=true`, avec une `mainClass` factice que Maven
+exige avant de lire `skip`), et seul api le réactive.
+
+## Téléchargements Maven Central
+
+Maven Central limite le débit des clients (réponses `429 Too Many Requests`). Les mesures suivantes réduisent le
+nombre de requêtes sans affaiblir l'intégrité des artefacts.
+
+- **Cache** : chaque job qui lance Maven (`build`, `sbom`, `attack-bench`, `deploy-dev`, `deploy-prod`) utilise
+  `actions/setup-java` avec `cache: maven`. La clé est le condensat de tous les `pom.xml` (comportement par défaut de
+  setup-java) ; le cache est restauré au début du job et enregistré à la fin s'il n'existait pas.
+- **Un seul enregistrement par clé** : setup-java n'enregistre le cache que pour le premier job terminé avec cette clé.
+  `sbom` et `attack-bench` dépendent donc de `build` (`needs: build`) : ils restaurent le cache complet de `build`
+  au lieu d'en enregistrer un partiel. Déclarer le plugin CycloneDX dans le `pluginManagement` épingle sa version et
+  permet le préfixe court `cyclonedx:makeAggregateBom`.
+- **Plugins hors de `verify`** : `verify` ne charge ni `exec-maven-plugin` (bancs) ni `cyclonedx-maven-plugin`
+  (`sbom`), qui n'entreraient donc jamais dans le cache enregistré par `build`. Une étape de `build` les charge sans
+  rien produire : `exec:help` et `cyclonedx:makeAggregateBom -Dcyclonedx.skip=true` (CycloneDX n'a pas de goal
+  `help`). Aucun job n'appelle plus `install` (absent de `verify`) : les bancs passent par le réacteur, et `cd.yml`
+  construit les WAR par `package`. Vérifié localement en rejouant `build` sur un dépôt Maven vide : ensuite, le banc
+  d'attaques, `package` et le banc de charge passent **hors ligne** (`-o`) ; `sbom`, qui exige le mode en ligne
+  (« Goal requires online mode »), ne télécharge plus que 2 jars de dépendances que seule la nomenclature complète
+  résout (`jakarta.el-api`, `junit-platform-engine`), contre 47 fichiers sans cache.
+- **Réessais** (`middleware/.mvn/maven.config`) : `-Daether.connector.http.retryHandler.count=5` (défaut 3),
+  `-Daether.connector.http.retryHandler.serviceUnavailable=429,500,502,503,504` et
+  `-Daether.connector.http.retryHandler.interval=5000` (en ms, valeur par défaut rendue explicite). Par défaut, Maven
+  Resolver ne réessaie que `429` et `503` (constantes vérifiées dans `maven-resolver-api` 1.9.27, livré avec
+  Maven 3.9.13). Attente avant l'essai n (lue dans le code de `HttpTransporter` du même jar) : la valeur de l'en-tête
+  `Retry-After` si le serveur l'envoie, sinon n × `interval`, soit 5, 10, 15, 20 puis 25 s ; au-delà de `intervalMax`
+  (300 s par défaut), l'essai est abandonné.
+- **Sommes de contrôle strictes** (`--strict-checksums`, équivalent de `-C`) : par défaut, un condensat faux ne produit
+  qu'un avertissement et l'artefact est installé quand même. Vérifié localement avec un dépôt `file://` dont le `.sha1`
+  est faux : sous `middleware/`, le build échoue ; hors du projet (politique par défaut), il se poursuit et le jar est
+  installé dans `~/.m2`.
+- **Dependabot** : mises à jour de version regroupées en une PR par écosystème et par semaine, au plus 3 ouvertes ;
+  les mises à jour de sécurité restent des PR immédiates et séparées (`applies-to: version-updates`).
+
+**Emplacement de `maven.config`.** Le script `mvn` de Maven 3.9 part du dossier du POM donné par `-f` (sinon du
+dossier courant) et remonte jusqu'au premier dossier qui contient `.mvn/`. Vérifié avec Maven 3.9.13 (script `bin/mvn`
+du runner Linux et `mvn.cmd` de Windows) : un `maven.config` volontairement invalide est lu pour
+`mvn -f middleware/pom.xml` depuis la racine, pour `mvn` depuis `middleware/` et pour `mvn -f ../middleware/pom.xml`
+depuis `scripts/`, qu'il soit dans `.mvn/` à la racine ou dans `middleware/.mvn/`. Retenu : `middleware/.mvn/`, le
+dossier du POM parent, visité en premier (un `.mvn/` à la racine serait masqué par celui-ci). Le fichier ne contient
+pas de commentaire : une option par ligne.
 
 ## Banc d'attaques
 

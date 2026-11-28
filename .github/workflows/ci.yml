@@ -33,6 +33,12 @@ jobs:
         run: mvn -B -f middleware/pom.xml clean verify
       - name: Tests de mémoire (tag memory, tas de 300 Mio)
         run: mvn -B -f middleware/pom.xml -pl api -am test -Dgroups=memory -DargLine=-Xmx300m -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Plugins hors de verify dans le cache Maven (exec, CycloneDX)
+        # verify ne charge ni exec-maven-plugin (bancs) ni cyclonedx-maven-plugin (sbom). Le cache Maven est enregistré
+        # par ce job : sans cette étape, ces plugins n'y entrent jamais et chaque job dépendant les retélécharge.
+        # exec:help et cyclonedx:makeAggregateBom sauté (cyclonedx n'a pas de goal help) chargent chaque plugin et toutes
+        # ses dépendances sans rien produire (-N : POM parent seul).
+        run: mvn -B -q -N -f middleware/pom.xml exec:help cyclonedx:makeAggregateBom -Dcyclonedx.skip=true
       - name: Nombre de tests dans le résumé
         if: always()
         run: |
@@ -112,6 +118,9 @@ jobs:
 
   sbom:
     name: SBOM CycloneDX
+    # Après build : setup-java n'enregistre le cache Maven qu'une fois par clé (premier job terminé). En parallèle,
+    # sbom, plus court, enregistrerait un cache incomplet ; après build, il restaure le cache complet de build.
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -123,7 +132,8 @@ jobs:
           java-version: '25'
           cache: maven
       - name: Nomenclature agrégée des trois modules
-        run: mvn -B -f middleware/pom.xml org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom
+        # Version du plugin épinglée dans le pluginManagement de middleware/pom.xml (2.9.3).
+        run: mvn -B -f middleware/pom.xml cyclonedx:makeAggregateBom
       - uses: actions/upload-artifact@v7
         with:
           name: sbom-cyclonedx
@@ -183,10 +193,10 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
-      - name: Installation de core
-        run: mvn -B -f middleware/pom.xml -pl core -am install -DskipTests
       - name: AttackBench (JPEG Q75 en 8 et 12 bits, redimensionnement 75 %)
-        run: mvn -B -f middleware/pom.xml -pl api test-compile exec:java@attack-bench -Dbench.copies=20
+        # Dans le réacteur, sans installation : core est compilé et pris dans core/target/classes. exec:java est sauté
+        # dans le parent et dans core (configuration du parent), et ne s'exécute que dans api.
+        run: mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java@attack-bench -Dbench.copies=20
       - name: Rapport dans le résumé
         if: always()
         run: |

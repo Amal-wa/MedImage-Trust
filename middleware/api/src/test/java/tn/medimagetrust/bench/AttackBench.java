@@ -53,8 +53,8 @@ import tn.medimagetrust.fingerprint.TardosCodeGenerator;
  * si le PSNR minimal est sous 40 dB ou si les faux positifs dépassent 1 % ; une récupération sous 95 % produit un
  * avertissement GitHub ({@code ::warning::}) sans échec.</p>
  *
- * <p>Lancement : {@code mvn -B -f middleware/pom.xml -pl api test-compile exec:java@attack-bench}
- * (après {@code -pl core -am install}) ; rapport dans {@code middleware/api/target/bench/report.md} et
+ * <p>Lancement : {@code mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java@attack-bench}
+ * (dans le réacteur, sans installation) ; rapport dans {@code middleware/api/target/bench/report.md} et
  * {@code report.json}. Clé K_F de test fixe, jamais utilisée en production.</p>
  */
 public final class AttackBench {

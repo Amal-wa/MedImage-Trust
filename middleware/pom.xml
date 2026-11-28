@@ -72,6 +72,25 @@
           <groupId>org.codehaus.mojo</groupId>
           <artifactId>exec-maven-plugin</artifactId>
           <version>3.5.0</version>
+          <!--
+            Les bancs se lancent dans le réacteur, sans installation : « -pl api -am … exec:java@attack-bench ».
+            Maven exécute alors exec:java dans chaque module du réacteur (parent, core, api) : il est sauté partout
+            par défaut, et seul api le réactive (skip=false). mainClass factice : Maven exige ce paramètre obligatoire
+            avant même que le plugin ne teste skip.
+          -->
+          <configuration>
+            <skip>true</skip>
+            <mainClass>none</mainClass>
+          </configuration>
+        </plugin>
+        <!--
+          SBOM CycloneDX (job sbom de ci.yml) : version épinglée ici, appel par le préfixe court
+          « mvn -B -f middleware/pom.xml cyclonedx:makeAggregateBom ». Lié à aucune phase : verify ne le lance pas.
+        -->
+        <plugin>
+          <groupId>org.cyclonedx</groupId>
+          <artifactId>cyclonedx-maven-plugin</artifactId>
+          <version>2.9.3</version>
         </plugin>
       </plugins>
     </pluginManagement>

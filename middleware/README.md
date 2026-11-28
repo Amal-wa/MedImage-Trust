@@ -85,8 +85,7 @@ mvn -B -f middleware/pom.xml -pl api test -Dgroups=SEC-M01                 # tes
 mvn -B -f middleware/pom.xml -pl api test "-Dgroups=memory" "-DargLine=-Xmx300m"   # budget mémoire 36 Mpx
 mvn -B -f middleware/pom.xml -pl api test -Dtest='tn.medimagetrust.Architecture*'  # règles d'architecture
 mvn -B -f middleware/pom.xml -DskipTests package                           # api-1.0.war et iam-1.0.war
-mvn -B -f middleware/pom.xml -pl core -am install -DskipTests              # une fois, avant exec:java
-mvn -B -f middleware/pom.xml -pl api test-compile exec:java "-Dexec.args=3000 target/reports"   # simulation SEC-D04
+mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java "-Dexec.args=3000 target/reports"   # simulation SEC-D04 (réacteur, sans install)
 ```
 
 Le test mémoire (tag `memory`) est exclu par défaut ; un profil activé par `-Dgroups` lève cette exclusion.
