@@ -128,7 +128,6 @@ reproductible.
 ## Commandes
 ```
 mvn -B -f middleware/pom.xml -pl api test -Dtest='tn.medimagetrust.fingerprint.**'
-mvn -B -f middleware/pom.xml -pl core -am install -DskipTests        # une fois : parent et core dans le dépôt local
-mvn -B -f middleware/pom.xml -pl api test-compile exec:java "-Dexec.args=3000 target/reports"
+mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java "-Dexec.args=3000 target/reports"   # réacteur, sans install
 # rapport : target/reports/fingerprint-simulation.md et .json, relatifs au dossier de lancement
 ```

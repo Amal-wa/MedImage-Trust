@@ -51,7 +51,9 @@ jobs:
           java-version: '25'
           cache: maven
       - name: Construction des WAR (tests déjà passés en CI)
-        run: mvn -B -f middleware/pom.xml -DskipTests install
+        # package suffit : deploy.sh prend les WAR dans */target, et le banc de charge passe par le réacteur.
+        # install chargerait maven-install-plugin, absent du cache (verify ne l'utilise pas).
+        run: mvn -B -f middleware/pom.xml -DskipTests package
       - name: Noms *.medimage.localhost vers 127.0.0.1
         run: |
           echo '127.0.0.1 medimage.localhost www.medimage.localhost admin.medimage.localhost api.medimage.localhost iam.medimage.localhost' \
@@ -80,7 +82,7 @@ jobs:
       - name: Banc de charge (p95 < 2 s, rafale de 200 requêtes)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
-          mvn -B -f middleware/pom.xml -pl api test-compile exec:java@load-bench
+          mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java@load-bench
           -Dload.api=https://api.medimage.localhost
           -Dload.truststore="$MIT_BASE/tls/truststore.p12"
       - name: Mémoire du serveur après la charge
