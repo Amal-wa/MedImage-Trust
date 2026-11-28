@@ -114,6 +114,27 @@ check_redirect() {
     log "OK : HTTP → HTTPS ($code vers $location)"
 }
 
+# Poignée de main TLS 1.3 brute, avant tout curl : si elle échoue, les erreurs de curl (35 « unexpected eof ») ne
+# disent rien de la cause. Attendus : « Protocol : TLSv1.3 », une suite négociée et un sujet de certificat qui
+# contient le domaine. openssl écrit « Protocol: TLSv1.3 » même quand la poignée de main échoue : la ligne
+# « New, TLSv1.3, Cipher is TLS_… » et le sujet sont donc exigés aussi.
+# En dev, connexion à 127.0.0.1:443 avec l'indication SNI api.<domaine> (aucune résolution DNS requise).
+check_handshake() {
+    local target="api.${DOMAIN}:443" out
+    [[ "$ENV_NAME" == "dev" ]] && target="127.0.0.1:443"
+    out="$(openssl s_client -connect "$target" -servername "api.${DOMAIN}" -tls1_3 </dev/null 2>&1 || true)"
+    # Points du domaine pris littéralement dans l'expression régulière ([.]).
+    if ! grep -Eq 'Protocol *: *TLSv1\.3' <<<"$out" \
+        || ! grep -Eq '^New, TLSv1\.3, Cipher is TLS_' <<<"$out" \
+        || ! grep -Eq "^subject=.*${DOMAIN//./[.]}" <<<"$out"; then
+        printf '%s\n' "----- sortie de openssl s_client -connect $target -servername api.${DOMAIN} -tls1_3 -----" >&2
+        printf '%s\n' "$out" >&2
+        printf '%s\n' "-----" >&2
+        fail "poignée de main TLS 1.3 impossible sur $target (attendu : Protocol : TLSv1.3 et un sujet contenant ${DOMAIN})"
+    fi
+    log "OK : poignée de main TLS 1.3 sur $target ($(grep -m1 '^subject=' <<<"$out"))"
+}
+
 check_tls() {
     # TLS 1.2 doit être refusé, TLS 1.3 accepté.
     if curl -sS "${CURL_TLS[@]}" --max-time 10 --tlsv1.2 --tls-max 1.2 -o /dev/null \
@@ -173,6 +194,7 @@ main() {
     reload_wildfly "$HOME_WF"
 
     log "test de fumée"
+    check_handshake
     check_health "https://api.${DOMAIN}/api/health"
     check_health "https://iam.${DOMAIN}/iam/health"
     check_headers

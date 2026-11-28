@@ -195,17 +195,25 @@ configure_wildfly() {
 # Ajoute à bin/standalone.conf de l'instance $1 les options JVM du projet (une seule fois).
 # - jdk.tls.server.enableStatusRequestExtension=true : OCSP stapling (séance 3 de l'enseignant) ;
 # - jboss.http.port=80, jboss.https.port=443 : les prédicats des .cli testent %p = 80 ou 443.
+#   MIT_HTTP_PORT et MIT_HTTPS_PORT ne servent qu'aux essais sur un poste où 80 ou 443 est déjà pris : sur un autre
+#   port, les prédicats %p ne s'appliquent plus (pas de redirection HTTP → HTTPS, ou pas de HSTS).
 tune_standalone_conf() {
-    local conf="$1/bin/standalone.conf"
+    local conf="$1/bin/standalone.conf" http_port="${MIT_HTTP_PORT:-80}" https_port="${MIT_HTTPS_PORT:-443}"
     [[ -f "$conf" ]] || die "fichier introuvable : $conf"
+    [[ "$http_port" =~ ^[0-9]+$ && "$https_port" =~ ^[0-9]+$ ]] || die "MIT_HTTP_PORT et MIT_HTTPS_PORT doivent être des nombres"
     if ! grep -q '# >>> MedImage-Trust' "$conf"; then
-        cat >> "$conf" <<'EOF'
-
-# >>> MedImage-Trust (scripts/install-wildfly.sh)
-JAVA_OPTS="$JAVA_OPTS -Djdk.tls.server.enableStatusRequestExtension=true"
-JAVA_OPTS="$JAVA_OPTS -Djboss.http.port=80 -Djboss.https.port=443"
-# <<< MedImage-Trust
-EOF
+        # $JAVA_OPTS est écrit tel quel : standalone.sh le développe au démarrage.
+        # shellcheck disable=SC2016
+        {
+            echo
+            echo '# >>> MedImage-Trust (scripts/install-wildfly.sh)'
+            echo 'JAVA_OPTS="$JAVA_OPTS -Djdk.tls.server.enableStatusRequestExtension=true"'
+            printf 'JAVA_OPTS="$JAVA_OPTS -Djboss.http.port=%s -Djboss.https.port=%s"\n' "$http_port" "$https_port"
+            echo '# <<< MedImage-Trust'
+        } >> "$conf"
+        if [[ "$http_port" != "80" || "$https_port" != "443" ]]; then
+            log "attention : ports ${http_port}/${https_port} au lieu de 80/443 (essai local) ; redirection ou HSTS inactifs"
+        fi
     fi
 }
 

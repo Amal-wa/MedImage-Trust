@@ -56,6 +56,7 @@ publie une page de remplacement signalée comme telle), recharge, puis vérifie 
 
 | Vérification | Attendu |
 |---|---|
+| poignée de main brute, avant tout curl : `openssl s_client -connect 127.0.0.1:443 -servername api.<domaine> -tls1_3` (prod : `api.<domaine>:443`) | `Protocol : TLSv1.3`, `New, TLSv1.3, Cipher is TLS_…` et un sujet de certificat contenant le domaine ; sinon la sortie d'openssl est affichée et le déploiement s'arrête |
 | `https://api.<domaine>/api/health`, `https://iam.<domaine>/iam/health` | `{"status":"UP"}` |
 | en-têtes | `Strict-Transport-Security` (api, www) ; `Cache-Control: no-store` (`/api/health`, `/iam/health`) ; sur api, iam, www et admin : `X-Content-Type-Options: nosniff`, ni `X-Powered-By` ni `Server` (durcissements, voir `wildfly/MODIFICATIONS.md`) |
 | `http://api.<domaine>/…` | redirection vers `https://` |
@@ -69,6 +70,36 @@ reporter dans `versions.properties` ; installation à côté de l'ancienne ; arr
 nouvelle, **réapplication de toute la configuration par les `.cli`** ; `deploy.sh` et son test de fumée. Si tout
 passe, le lien `/opt/medimage/wildfly` bascule ; sinon la nouvelle instance est arrêtée et l'ancienne redémarrée.
 Journal : `/opt/medimage/logs/update-wildfly.log`.
+
+## TLS 1.3 et `cipher-suite-names`
+
+Dans Elytron, un `server-ssl-context` règle les suites de chiffrement par **deux attributs distincts** :
+
+- `cipher-suite-filter` (valeur par défaut `DEFAULT`) : suites de **TLS 1.2 et antérieures**, en syntaxe de filtre à
+  la manière d'OpenSSL ;
+- `cipher-suite-names` (aucune valeur par défaut) : suites de **TLS 1.3**, par leurs noms IANA séparés par `:`.
+
+Les suites TLS 1.3 ne sont pas couvertes par `cipher-suite-filter`. Tant que `cipher-suite-names` n'est pas défini,
+Elytron n'active **aucune** suite TLS 1.3. Avec `protocols=["TLSv1.3"]` seul, le serveur n'a donc ni protocole
+antérieur ni suite TLS 1.3 : il ferme la connexion dès le ClientHello, sans alerte ni certificat. Symptômes :
+`curl: (35) … unexpected eof`, `Remote host terminated the handshake` (ZAP, LoadBench), et `openssl s_client` affiche
+`New, (NONE), Cipher is (NONE)` et `no peer certificate available`. C'était la panne du premier passage du CD dev.
+
+`tls.cli` définit donc les trois suites TLS 1.3 sans faiblesse connue, la plus forte d'abord (l'ordre du serveur est
+respecté, `use-cipher-suites-order=true` par défaut) :
+
+```
+cipher-suite-names="TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256"
+```
+
+Si `medimage-ssc` existe déjà (installation créée avant cette correction), `tls.cli` met à jour `protocols` et
+`cipher-suite-names` par `write-attribute`, au lieu de recréer le contexte. Vérifié le 28/11/2026 sur WildFly 42.0.0.Final
+démarré par `install-wildfly.sh dev`. Après retrait de `cipher-suite-names`, la panne réapparaît à l'identique ;
+après réapplication de `tls.cli`, la poignée de main TLS 1.3 aboutit (`TLS_AES_256_GCM_SHA384`). TLS 1.2 reste refusé
+(alerte `protocol version`).
+
+L'avertissement `WFLYELY00023` au démarrage concerne le magasin `applicationKS` (`application.keystore`) de la
+configuration par défaut, que l'écouteur HTTPS n'utilise plus : il est sans effet.
 
 ## Ports 80 et 443 sans root
 
@@ -86,6 +117,12 @@ echo "$JAVA_HOME/lib" | sudo tee /etc/ld.so.conf.d/medimage-java.conf && sudo ld
 
 En prod, un service systemd avec `AmbientCapabilities=CAP_NET_BIND_SERVICE` donne le même résultat sans toucher au
 binaire.
+
+Sur un poste où 80 ou 443 est déjà pris (par exemple par `http.sys` sous Windows), `MIT_HTTP_PORT` et
+`MIT_HTTPS_PORT` (défaut 80 et 443), lus par `install-wildfly.sh`, décalent les ports pour un essai local. Les
+prédicats `%p` ne s'appliquent alors plus sur le port décalé : pas de redirection HTTP → HTTPS si HTTP n'est pas sur 80,
+pas de HSTS si HTTPS n'est pas sur 443. Le test de fumée échoue donc sur ce point, ce qui est attendu. La CI n'utilise
+jamais ces variables.
 
 Les consoles de gestion (9990 et 9993) restent sur l'interface `management` (`127.0.0.1` par défaut) : les scripts ne
 passent jamais `-bmanagement`. Seule l'interface publique passe à `0.0.0.0` en prod (`-b`).
