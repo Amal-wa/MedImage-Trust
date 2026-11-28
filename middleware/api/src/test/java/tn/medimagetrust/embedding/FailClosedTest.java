@@ -10,7 +10,9 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static tn.medimagetrust.embedding.EmbeddingException.FinalCheck;
+import static tn.medimagetrust.embedding.EmbeddingException.Reason.EMBEDDING_RANGE_UNSUPPORTED;
 import static tn.medimagetrust.embedding.EmbeddingException.Reason.FINAL_CHECK_FAILED;
 import static tn.medimagetrust.embedding.EmbeddingException.Reason.ILLEGAL_STATE;
 
@@ -120,16 +122,17 @@ class FailClosedTest {
     }
 
     @Test
-    @DisplayName("Fond à 0 : le bornage casse des bits F, le contrôle final annule la copie (F_READBACK_MISMATCH)")
+    @DisplayName("Fond à 0, sortie non signée forcée : la sortie de plage est détectée et l'émission refusée, sans écrêtage")
     void zeroBackgroundIsCancelledNotReturnedBroken() {
-        // Comportement mesuré, non corrigé en douce : voir api/docs/embedding.md, « Limites connues ».
+        // Comportement « sans la correction » : la sortie de la plage stockable n'est jamais écrêtée. Sans le mode
+        // signé, l'émission est refusée avec un motif explicite dès le premier bloc concerné, et aucune copie n'est
+        // produite (au profil 2, le bornage silencieux cassait des bits F et le contrôle final annulait la copie).
         Random rnd = new Random(TEST_SEED_FAIL);
-        EmbeddingSession s = EmbeddingSession.open(Phantoms.zeroBackground().image());
-        Markings.writeF(s, rnd);
-        s.writeS(new byte[64]);
-        s.writeW(new byte[208]);
-        EmbeddingException e = assertThrows(EmbeddingException.class, s::finish);
-        assertEquals(FinalCheck.F_READBACK_MISMATCH, e.finalCheck().orElseThrow());
+        EmbeddingSession s = EmbeddingSession.open(Phantoms.zeroBackground().image(), false);
+        EmbeddingException e = assertThrows(EmbeddingException.class, () -> Markings.writeF(s, rnd));
+        assertEquals(EMBEDDING_RANGE_UNSUPPORTED, e.reason());
+        assertTrue(s.rangeExitCount() >= 1, "aucun écrêtage détecté");
+        assertEquals(ILLEGAL_STATE, assertThrows(EmbeddingException.class, s::finish).reason());
     }
 
     @Test

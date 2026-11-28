@@ -56,7 +56,7 @@ class InvariantPropertyTest {
             switch (kind[i]) {
                 case 0 -> assertEquals(0, dev, "ROI modifiée");
                 case 1 -> assertTrue(dev <= EmbeddingProfile.MAX_LSB_DEVIATION, "écart S/W");
-                case 2 -> assertTrue(dev <= EmbeddingProfile.MAX_F_DEVIATION, "écart F");
+                case 2 -> assertTrue(dev <= EmbeddingProfile.maxFDeviation(m.original().bitsStored()), "écart F");
                 default -> assertEquals(0, dev, "bloc F non utilisé modifié");
             }
             assertEquals(kind[i] != 0, m.profile().inRoni(i));
@@ -65,7 +65,7 @@ class InvariantPropertyTest {
         assertTrue(RoniDetector.candidates(m.marked()).stream().anyMatch(c -> c.sameMask(m.profile())));
         LsbChannel lsb = LsbChannel.reader(m.marked(), p);
         assertTrue(Arrays.equals(m.s(), lsb.readS()) && Arrays.equals(m.w(), lsb.readW()));
-        assertEquals(0, Markings.fBitErrors(FBlockReader.of(m.marked(), p), m.f()));
+        assertEquals(0, Markings.fBitErrors(FBlockReader.of(m.marked(), p, m.original().bitsStored()), m.f()));
     }
 
     private static void fill(byte[] kind, Partitions p, int block, int cols, byte v) {

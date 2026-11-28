@@ -3,25 +3,31 @@ package tn.medimagetrust.embedding;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.OptionalInt;
 
 import static tn.medimagetrust.embedding.EmbeddingException.Reason.BURNED_IN_ANNOTATION;
 import static tn.medimagetrust.embedding.EmbeddingException.Reason.GUARD_VIOLATION;
 import static tn.medimagetrust.embedding.EmbeddingException.Reason.INVALID_INPUT;
 import static tn.medimagetrust.embedding.EmbeddingException.Reason.OVERLAY_PRESENT;
+import static tn.medimagetrust.embedding.EmbeddingException.Reason.PIXEL_PADDING_IN_RONI;
 import static tn.medimagetrust.embedding.EmbeddingException.Reason.ROI_TOO_SMALL;
 import static tn.medimagetrust.embedding.EmbeddingException.Reason.TOO_FEW_RONI_BLOCKS;
 
 /**
- * Détection déterministe de la RONI (profil d'incorporation v2, dossier v2.4 §4.1).
+ * Détection déterministe de la RONI (profil d'incorporation, dossier v2.4 §4.1).
  *
  * <ol>
- *   <li>{@code q = pixel >> 2} ;</li>
- *   <li>seuil d'Otsu {@code T} sur l'histogramme de {@code q} ({@link Otsu}) ;</li>
+ *   <li>{@code q = valeur >> 2}, sur la valeur décodée ({@link PixelImage#valueAt(int)}) : un pixel négatif d'une
+ *       copie signée a un {@code q} négatif, donc sous tout seuil ;</li>
+ *   <li>seuil d'Otsu {@code T} sur l'histogramme de {@code q}, sur toute la plage représentable de l'image
+ *       ({@link Otsu}) ;</li>
  *   <li>polarité du fond = majorité des pixels du bord (égalité : fond sombre) ;</li>
  *   <li>composantes connexes du fond (4-connexité) qui touchent le bord, par un parcours itératif à file bornée ;</li>
  *   <li>érosion de 8 pixels (carré 17 × 17, l'extérieur de l'image compte comme du fond), séparable en O(n) ;</li>
- *   <li>blocs 8 × 8 alignés sur (0, 0), entièrement dans le masque érodé ; blocs incomplets ignorés ;</li>
- *   <li>garde : chaque pixel de la RONI à au moins 4 niveaux de {@code q} du seuil, du côté du fond.</li>
+ *   <li>blocs 8 × 8 alignés sur (0, 0), entièrement dans le masque érodé ; blocs incomplets ignorés ; si l'image
+ *       déclare un {@code PixelPaddingValue}, les blocs qui contiennent un pixel de cette valeur sont exclus ;</li>
+ *   <li>garde : chaque pixel de la RONI à au moins {@link EmbeddingProfile#guardQ(int)} niveaux de {@code q} du
+ *       seuil, du côté du fond.</li>
  * </ol>
  *
  * <p>Mémoire : masques compactés d'un bit par pixel ({@link Bits}), file de parcours de taille fixe, tampons de la
@@ -37,7 +43,8 @@ public final class RoniDetector {
      * Détecte la RONI d'une image à marquer et applique les refus du profil.
      *
      * @throws EmbeddingException {@code INVALID_INPUT}, {@code BURNED_IN_ANNOTATION}, {@code OVERLAY_PRESENT},
-     *                            {@code TOO_FEW_RONI_BLOCKS}, {@code GUARD_VIOLATION} ou {@code ROI_TOO_SMALL}
+     *                            {@code PIXEL_PADDING_IN_RONI}, {@code TOO_FEW_RONI_BLOCKS}, {@code GUARD_VIOLATION}
+     *                            ou {@code ROI_TOO_SMALL}
      */
     public static RoniProfile detect(PixelImage image) {
         if (image == null) {
@@ -49,9 +56,14 @@ public final class RoniDetector {
         if (image.overlayPresent()) {
             throw new EmbeddingException(OVERLAY_PRESENT);
         }
-        RoniProfile profile = compute(image, otsuThreshold(image));
+        int threshold = otsuThreshold(image);
+        Raw raw = raw(image, threshold);
+        int[] kept = withoutPaddingBlocks(image, raw.blocks());
+        RoniProfile profile = new RoniProfile(image.rows(), image.cols(), threshold, raw.polarity(), kept);
         if (profile.roniBlockCount() < EmbeddingProfile.MIN_RONI_BLOCKS) {
-            throw new EmbeddingException(TOO_FEW_RONI_BLOCKS);
+            // Capacité suffisante sans les blocs de remplissage : le refus vient du PixelPaddingValue.
+            throw new EmbeddingException(raw.blocks().length >= EmbeddingProfile.MIN_RONI_BLOCKS
+                    ? PIXEL_PADDING_IN_RONI : TOO_FEW_RONI_BLOCKS);
         }
         if (!guardHolds(image, profile)) {
             throw new EmbeddingException(GUARD_VIOLATION);
@@ -74,11 +86,12 @@ public final class RoniDetector {
             throw new EmbeddingException(INVALID_INPUT);
         }
         int t0 = otsuThreshold(marked);
-        int qMax = marked.maxValue() >> EmbeddingProfile.Q_SHIFT;
+        int qMin = qOf(marked.storableMin());
+        int qMax = qOf(marked.storableMax());
         List<RoniProfile> out = new ArrayList<>();
         for (int k = 0; k <= 2 * EmbeddingProfile.T_SEARCH; k++) {
             int t = t0 + offsetOf(k);
-            if (t < 0 || t > qMax) {
+            if (t < qMin || t > qMax) {
                 continue;
             }
             RoniProfile p = compute(marked, t);
@@ -103,10 +116,11 @@ public final class RoniDetector {
      */
     static boolean candidatesContain(PixelImage marked, RoniProfile original) {
         int t0 = otsuThreshold(marked);
-        int qMax = marked.maxValue() >> EmbeddingProfile.Q_SHIFT;
+        int qMin = qOf(marked.storableMin());
+        int qMax = qOf(marked.storableMax());
         for (int k = 0; k <= 2 * EmbeddingProfile.T_SEARCH; k++) {
             int t = t0 + offsetOf(k);
-            if (t >= 0 && t <= qMax && compute(marked, t).sameMask(original)) {
+            if (t >= qMin && t <= qMax && compute(marked, t).sameMask(original)) {
                 return true;
             }
         }
@@ -118,35 +132,94 @@ public final class RoniDetector {
         return (k % 2 == 1) ? -((k + 1) / 2) : k / 2;
     }
 
-    /** Seuil d'Otsu sur l'histogramme de {@code q} (taille {@code (maxValue >> 2) + 1}). */
+    /** Niveau {@code q} d'une valeur : décalage arithmétique, négatif pour une valeur négative. */
+    private static int qOf(int value) {
+        return value >> EmbeddingProfile.Q_SHIFT;
+    }
+
+    /**
+     * Seuil d'Otsu sur l'histogramme de {@code q}, du plus petit au plus grand {@code q} représentable : taille
+     * {@code (maxValue >> 2) + 1} pour une image non signée (comme au profil 2), {@code 2^14} pour une copie signée.
+     * Le seuil rendu est un niveau de {@code q} (négatif possible en mode signé).
+     */
     static int otsuThreshold(PixelImage image) {
         char[] px = image.view();
-        long[] hist = new long[(image.maxValue() >> EmbeddingProfile.Q_SHIFT) + 1];
+        boolean signed = image.signed();
+        int qMin = qOf(image.storableMin());
+        long[] hist = new long[qOf(image.storableMax()) - qMin + 1];
         for (char v : px) {
-            hist[v >> EmbeddingProfile.Q_SHIFT]++;
+            hist[qOf(PixelImage.decode(v, signed)) - qMin]++;
         }
-        return Otsu.threshold(hist);
+        return Otsu.threshold(hist) + qMin;
+    }
+
+    /** Polarité et blocs complets du masque érodé, pour un seuil donné, avant l'exclusion du remplissage. */
+    private record Raw(BackgroundPolarity polarity, int[] blocks) {}
+
+    private static Raw raw(PixelImage image, int threshold) {
+        int rows = image.rows();
+        int cols = image.cols();
+        char[] px = image.view();
+        boolean signed = image.signed();
+        BackgroundPolarity polarity = polarity(px, signed, rows, cols, threshold);
+        long[] mask = borderConnectedBackground(px, signed, rows, cols, threshold, polarity, QUEUE_CAPACITY);
+        erodeInPlace(mask, rows, cols, EmbeddingProfile.EROSION_PX);
+        int[] blocks = fullBlocks(mask, rows, cols);
+        return new Raw(polarity, blocks);
     }
 
     /** Étapes 2 à 6 pour un seuil donné, sans aucun refus. */
     static RoniProfile compute(PixelImage image, int threshold) {
-        int rows = image.rows();
+        Raw raw = raw(image, threshold);
+        return new RoniProfile(image.rows(), image.cols(), threshold, raw.polarity(),
+                withoutPaddingBlocks(image, raw.blocks()));
+    }
+
+    /**
+     * Exclut les blocs qui contiennent un pixel égal au {@code PixelPaddingValue} déclaré : ces pixels ne sont
+     * jamais modifiés. Sans valeur déclarée, rend le même tableau.
+     */
+    private static int[] withoutPaddingBlocks(PixelImage image, int[] blocks) {
+        OptionalInt padding = image.pixelPaddingValue();
+        if (padding.isEmpty()) {
+            return blocks;
+        }
+        int p = padding.getAsInt();
         int cols = image.cols();
-        char[] px = image.view();
-        BackgroundPolarity polarity = polarity(px, rows, cols, threshold);
-        long[] mask = borderConnectedBackground(px, rows, cols, threshold, polarity);
-        erodeInPlace(mask, rows, cols, EmbeddingProfile.EROSION_PX);
-        int[] blocks = fullBlocks(mask, rows, cols);
-        mask = null; // libéré avant que RoniProfile n'alloue son propre masque
-        return new RoniProfile(rows, cols, threshold, polarity, blocks);
+        int blockCols = cols / EmbeddingProfile.BLOCK;
+        int[] kept = new int[blocks.length];
+        int n = 0;
+        for (int b : blocks) {
+            int top = (b / blockCols) * EmbeddingProfile.BLOCK;
+            int left = (b % blockCols) * EmbeddingProfile.BLOCK;
+            boolean hasPadding = false;
+            for (int r = 0; r < EmbeddingProfile.BLOCK && !hasPadding; r++) {
+                int base = (top + r) * cols + left;
+                for (int c = 0; c < EmbeddingProfile.BLOCK; c++) {
+                    if (image.valueAt(base + c) == p) {
+                        hasPadding = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasPadding) {
+                kept[n++] = b;
+            }
+        }
+        return n == blocks.length ? blocks : Arrays.copyOf(kept, n);
+    }
+
+    /** Majorité des pixels du bord (image non signée) ; voir {@link #polarity(char[], boolean, int, int, int)}. */
+    static BackgroundPolarity polarity(char[] px, int rows, int cols, int threshold) {
+        return polarity(px, false, rows, cols, threshold);
     }
 
     /** Majorité des pixels du bord (chaque pixel compté une fois) ; égalité : fond sombre. */
-    static BackgroundPolarity polarity(char[] px, int rows, int cols, int threshold) {
+    static BackgroundPolarity polarity(char[] px, boolean signed, int rows, int cols, int threshold) {
         long dark = 0;
         long light = 0;
         for (int i : borderIndices(rows, cols)) {
-            if ((px[i] >> EmbeddingProfile.Q_SHIFT) <= threshold) {
+            if (qOf(PixelImage.decode(px[i], signed)) <= threshold) {
                 dark++;
             } else {
                 light++;
@@ -187,13 +260,19 @@ public final class RoniDetector {
      */
     static long[] borderConnectedBackground(char[] px, int rows, int cols, int threshold,
                                             BackgroundPolarity polarity) {
-        return borderConnectedBackground(px, rows, cols, threshold, polarity, QUEUE_CAPACITY);
+        return borderConnectedBackground(px, false, rows, cols, threshold, polarity, QUEUE_CAPACITY);
     }
 
-    /** Variante à capacité de file choisie (tests du débordement). */
+    /** Variante à capacité de file choisie (tests du débordement), image non signée. */
     static long[] borderConnectedBackground(char[] px, int rows, int cols, int threshold,
                                             BackgroundPolarity polarity, int queueCapacity) {
-        Flood flood = new Flood(px, rows, cols, threshold, polarity,
+        return borderConnectedBackground(px, false, rows, cols, threshold, polarity, queueCapacity);
+    }
+
+    /** Fond connexe au bord, représentation {@code signed} et capacité de file choisies. */
+    static long[] borderConnectedBackground(char[] px, boolean signed, int rows, int cols, int threshold,
+                                            BackgroundPolarity polarity, int queueCapacity) {
+        Flood flood = new Flood(px, signed, rows, cols, threshold, polarity,
                 Math.max(1, Math.min(queueCapacity, rows * cols)));
         for (int i : borderIndices(rows, cols)) {
             flood.offer(i);
@@ -205,6 +284,7 @@ public final class RoniDetector {
     /** Remplissage par diffusion, file bornée, débordement dans un masque compacté. */
     private static final class Flood {
         private final char[] px;
+        private final boolean signed;
         private final int rows;
         private final int cols;
         private final int threshold;
@@ -216,8 +296,10 @@ public final class RoniDetector {
         private long[] pending;
         private long pendingCount;
 
-        Flood(char[] px, int rows, int cols, int threshold, BackgroundPolarity polarity, int capacity) {
+        Flood(char[] px, boolean signed, int rows, int cols, int threshold, BackgroundPolarity polarity,
+              int capacity) {
             this.px = px;
+            this.signed = signed;
             this.rows = rows;
             this.cols = cols;
             this.threshold = threshold;
@@ -227,7 +309,7 @@ public final class RoniDetector {
         }
 
         void offer(int j) {
-            if (!Bits.get(seen, j) && polarity.isBackground(px[j] >> EmbeddingProfile.Q_SHIFT, threshold)) {
+            if (!Bits.get(seen, j) && polarity.isBackground(qOf(PixelImage.decode(px[j], signed)), threshold)) {
                 Bits.set(seen, j);
                 push(j);
             }
@@ -380,14 +462,16 @@ public final class RoniDetector {
         return true;
     }
 
-    /** Garde : chaque pixel de la RONI est à au moins {@code GUARD_Q} niveaux de q du seuil, du côté du fond. */
+    /**
+     * Garde : chaque pixel de la RONI est à au moins {@link EmbeddingProfile#guardQ(int)} niveaux de q du seuil, du
+     * côté du fond (B = profondeur effective de l'image).
+     */
     static boolean guardHolds(PixelImage image, RoniProfile profile) {
-        char[] px = image.view();
+        int guard = EmbeddingProfile.guardQ(image.bitsStored());
         int n = image.pixelCount();
         for (int i = 0; i < n; i++) {
             if (profile.inRoniUnchecked(i)
-                    && profile.polarity().guardDistance(px[i] >> EmbeddingProfile.Q_SHIFT, profile.threshold())
-                    < EmbeddingProfile.GUARD_Q) {
+                    && profile.polarity().guardDistance(qOf(image.valueAt(i)), profile.threshold()) < guard) {
                 return false;
             }
         }

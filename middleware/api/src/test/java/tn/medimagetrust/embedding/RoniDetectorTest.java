@@ -135,7 +135,7 @@ class RoniDetectorTest {
             if (p.inRoni(i)) {
                 assertFalse(ph.body()[i]);
                 assertTrue((ph.image().pixel(i) >> EmbeddingProfile.Q_SHIFT) - p.threshold()
-                        >= EmbeddingProfile.GUARD_Q);
+                        >= EmbeddingProfile.guardQ(ph.image().bitsStored()));
             }
         }
     }

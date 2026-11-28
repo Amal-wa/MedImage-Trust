@@ -79,13 +79,18 @@ class FingerprintEmbedderTest {
 
     @Test
     void dithersAreInRangeAndDependOnTheBlock() {
-        double[] d0 = embedder.dithers(mask, 0);
-        double[] d1 = embedder.dithers(mask, 1);
+        double delta = tn.medimagetrust.embedding.EmbeddingProfile.qimDelta(8);
+        double[] d0 = embedder.dithers(mask, 0, delta);
+        double[] d1 = embedder.dithers(mask, 1, delta);
         assertEquals(8, d0.length);
-        for (double v : d0) assertTrue(v >= 0 && v < FingerprintParams.QIM_DELTA);
+        for (double v : d0) assertTrue(v >= 0 && v < delta);
         assertFalse(Arrays.equals(d0, d1));
-        assertFalse(Arrays.equals(d0, embedder.dithers(TestKeys.id(4), 0)));
-        assertArrayEquals(d0, new FingerprintEmbedder(TestKeys.prf(1)).dithers(mask, 0));
+        assertFalse(Arrays.equals(d0, embedder.dithers(TestKeys.id(4), 0, delta)));
+        assertArrayEquals(d0, new FingerprintEmbedder(TestKeys.prf(1)).dithers(mask, 0, delta));
+        // Δ(B) ne change que l'échelle : mêmes tirages, multipliés par 2^(B − 8) (exact en virgule flottante).
+        double delta12 = tn.medimagetrust.embedding.EmbeddingProfile.qimDelta(12);
+        double[] d12 = embedder.dithers(mask, 0, delta12);
+        for (int j = 0; j < 8; j++) assertEquals(d0[j] * 16, d12[j]);
     }
 
     @Test

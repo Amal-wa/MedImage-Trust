@@ -7,6 +7,7 @@ import java.awt.image.WritableRaster;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,12 +19,15 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
+import java.util.function.IntUnaryOperator;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
 import tn.medimagetrust.embedding.EmbeddingException;
+import tn.medimagetrust.embedding.EmbeddingProfile;
+import tn.medimagetrust.embedding.EmbeddingResult;
 import tn.medimagetrust.embedding.EmbeddingSession;
 import tn.medimagetrust.embedding.FBlockReader;
 import tn.medimagetrust.embedding.Partitions;
@@ -49,9 +53,15 @@ import tn.medimagetrust.fingerprint.TardosCodeGenerator;
  * l'échelle d'origine) ; redimensionnement à 75 % puis retour à la taille d'origine, en bilinéaire (l'analyste connaît
  * les dimensions de l'émission). Tout passe par ImageIO et Java 2D, sans dépendance externe.</p>
  *
- * <p>Critères d'acceptation : récupération ≥ 95 %, faux positifs ≤ 1 %, PSNR ≥ 40 dB. Le programme sort avec le code 1
- * si le PSNR minimal est sous 40 dB ou si les faux positifs dépassent 1 % ; une récupération sous 95 % produit un
- * avertissement GitHub ({@code ::warning::}) sans échec.</p>
+ * <p>L'extraction reçoit la profondeur effective B enregistrée à l'émission ({@code EmbeddingResult.bitsStored()}),
+ * comme le fera le registre : {@code FBlockReader.of(copie, partitions, B)}. Δ n'est jamais lu dans la copie attaquée.
+ * Une copie produite en mode signé est attaquée dans son domaine signé (décalage de 32 768 pour le redimensionnement ;
+ * fenêtre fixe {@code [0, 2^B − 1]} pour le JPEG, comme un visualiseur).</p>
+ *
+ * <p>Critères d'acceptation bloquants : vrai destinataire accusé dans toutes les copies de chaque scénario (sans
+ * attaque, JPEG Q75, redimensionnement à 75 %, en 8 et en 12 bits), faux positifs ≤ 1 %, PSNR ≥ 40 dB. Le programme
+ * sort avec le code 1 si l'un d'eux n'est pas tenu. Une récupération des bits F sous 95 % produit un avertissement
+ * GitHub ({@code ::warning::}) sans échec.</p>
  *
  * <p>Lancement : {@code mvn -B -f middleware/pom.xml -pl api -am test-compile exec:java@attack-bench}
  * (dans le réacteur, sans installation) ; rapport dans {@code middleware/api/target/bench/report.md} et
@@ -64,6 +74,8 @@ public final class AttackBench {
     static final double MIN_PSNR_DB = 40.0;
     static final double MAX_FALSE_POSITIVE_RATE = 0.01;
     static final double MIN_RECOVERY = 0.95;
+    /** Part des copies dont le vrai destinataire doit être accusé, dans chaque scénario (critère bloquant). */
+    static final double MIN_ATTRIBUTION = 1.0;
     static final float JPEG_QUALITY = 0.75f;
     static final double RESIZE_FACTOR = 0.75;
 
@@ -95,6 +107,8 @@ public final class AttackBench {
         final List<String> refusals = new ArrayList<>();
         double psnrSum;
         double psnrMin = Double.POSITIVE_INFINITY;
+        int signedCopies;
+        int qimDelta;
         int unmarkedAnalyses;
         int unmarkedAccusations;
         final Map<String, Scenario> scenarios = new LinkedHashMap<>();
@@ -138,42 +152,69 @@ public final class AttackBench {
         Files.writeString(out.resolve("report.json"), json(results, copies), StandardCharsets.UTF_8);
         System.out.println(md);
 
+        int code = exitCode(results, System.out);
+        System.out.println("Rapport : " + out.resolve("report.md").toAbsolutePath());
+        if (code != 0) System.exit(code);
+    }
+
+    /**
+     * Applique les critères d'acceptation aux résultats : écrit sur {@code log} une ligne {@code ::error::} par
+     * critère bloquant non tenu et une ligne {@code ::warning::} par récupération des bits F sous 95 %, puis renvoie
+     * le code de sortie du banc (1 si un critère bloquant n'est pas tenu, 0 sinon).
+     */
+    static int exitCode(List<PhantomResult> results, PrintStream log) {
         boolean failed = false;
         for (PhantomResult r : results) {
             if (r.marked == 0) {
-                System.out.println("::error::" + r.name + " : aucune copie marquée");
+                log.println("::error::" + r.name + " : aucune copie marquée");
                 failed = true;
                 continue;
             }
             if (r.psnrMin < MIN_PSNR_DB) {
-                System.out.printf(Locale.ROOT, "::error::%s : PSNR minimal %.2f dB < 40 dB%n", r.name, r.psnrMin);
+                log.printf(Locale.ROOT, "::error::%s : PSNR minimal %.2f dB < 40 dB%n", r.name, r.psnrMin);
                 failed = true;
             }
             if (r.unmarkedFalsePositiveRate() > MAX_FALSE_POSITIVE_RATE) {
-                System.out.printf(Locale.ROOT, "::error::%s : faux positifs sur images non marquées %.2f %% > 1 %%%n",
+                log.printf(Locale.ROOT, "::error::%s : faux positifs sur images non marquées %.2f %% > 1 %%%n",
                         r.name, 100 * r.unmarkedFalsePositiveRate());
                 failed = true;
             }
             for (Scenario s : r.scenarios.values()) {
                 if (s.falsePositiveRate() > MAX_FALSE_POSITIVE_RATE) {
-                    System.out.printf(Locale.ROOT, "::error::%s, %s : faux positifs %.2f %% > 1 %%%n",
+                    log.printf(Locale.ROOT, "::error::%s, %s : faux positifs %.2f %% > 1 %%%n",
                             r.name, s.name, 100 * s.falsePositiveRate());
                     failed = true;
                 }
+                if (s.attribution() < MIN_ATTRIBUTION) {
+                    log.printf(Locale.ROOT, "::error::%s, %s : vrai destinataire accusé dans %d copies sur %d%n",
+                            r.name, s.name, s.trueAccused, s.analyses);
+                    failed = true;
+                }
                 if (s.recovery() < MIN_RECOVERY) {
-                    System.out.printf(Locale.ROOT,
-                            "::warning::%s, %s : récupération des bits F %.2f %% < 95 %% (dette technique suivie : pas QIM proportionnel à la profondeur)%n",
+                    log.printf(Locale.ROOT,
+                            "::warning::%s, %s : récupération des bits F %.2f %% < 95 %% (critère non bloquant, voir « Critère de mesure »)%n",
                             r.name, s.name, 100 * s.recovery());
                 }
             }
         }
-        System.out.println("Rapport : " + out.resolve("report.md").toAbsolutePath());
-        if (failed) System.exit(1);
+        return failed ? 1 : 0;
     }
 
     static PhantomResult run(String name, Phantoms.Spec spec, int copies, FingerprintService service,
                              FingerprintEmbedder embedder, TardosCodeGenerator generator, List<String> recipients) {
+        return run(name, spec, copies, service, embedder, generator, recipients, IntUnaryOperator.identity());
+    }
+
+    /**
+     * Comme {@link #run(String, Phantoms.Spec, int, FingerprintService, FingerprintEmbedder, TardosCodeGenerator,
+     * List)}, avec la profondeur passée à l'extraction donnée par {@code extractionBits} à partir de celle du registre
+     * (identité dans le banc ; un test du banc s'en sert pour simuler un mauvais Δ et vérifier que l'échec est signalé).
+     */
+    static PhantomResult run(String name, Phantoms.Spec spec, int copies, FingerprintService service,
+                             FingerprintEmbedder embedder, TardosCodeGenerator generator, List<String> recipients,
+                             IntUnaryOperator extractionBits) {
         PhantomResult result = new PhantomResult(name);
+        result.qimDelta = EmbeddingProfile.qimDelta(spec.bitsStored());
         for (int i = 0; i < copies; i++) {
             long seed = TEST_SEED_BENCH + 1000L * i + spec.bitsStored();
             Random rnd = new Random(seed);
@@ -183,7 +224,7 @@ public final class AttackBench {
             String recipient = recipients.get(i % recipients.size());
 
             EmbeddingSession session;
-            PixelImage marked;
+            EmbeddingResult emission;
             try {
                 session = EmbeddingSession.open(original);
                 service.embed(session.fChannel(), session.maskDigest(),
@@ -194,14 +235,18 @@ public final class AttackBench {
                 rnd.nextBytes(w);
                 session.writeS(s);
                 session.writeW(w);
-                marked = session.finish();
+                emission = session.finish();
             } catch (EmbeddingException e) {
                 result.refused++;
                 result.refusals.add(e.auditCode());
                 continue;
             }
             result.marked++;
-            double psnr = psnr(original.pixels(), marked.pixels(), original.maxValue());
+            PixelImage marked = emission.image();
+            if (emission.signedOutput()) result.signedCopies++;
+            // Profondeur effective enregistrée dans le registre d'émission : c'est elle qui fixe Δ à l'analyse.
+            int registryBits = extractionBits.applyAsInt(emission.bitsStored());
+            double psnr = psnr(original, marked, original.maxValue());
             result.psnrSum += psnr;
             result.psnrMin = Math.min(result.psnrMin, psnr);
 
@@ -211,11 +256,11 @@ public final class AttackBench {
 
             Map<String, PixelImage> attacked = new LinkedHashMap<>();
             attacked.put("sans attaque", marked);
-            attacked.put("JPEG Q75", withPixels(marked, jpeg(marked)));
-            attacked.put("redimensionnement 75 %", withPixels(marked, resize(marked)));
+            attacked.put("JPEG Q75", image(marked, jpeg(marked)));
+            attacked.put("redimensionnement 75 %", image(marked, resize(marked)));
             for (Map.Entry<String, PixelImage> e : attacked.entrySet()) {
                 Scenario sc = result.scenarios.get(e.getKey());
-                FBlockReader reader = FBlockReader.of(e.getValue(), partitions);
+                FBlockReader reader = FBlockReader.of(e.getValue(), partitions, registryBits);
                 ExtractedWord word = embedder.extract(reader, maskDigest);
                 byte[] got = word.symbols();
                 for (int j = 0; j < expected.length; j++) {
@@ -234,8 +279,8 @@ public final class AttackBench {
             }
 
             // Copie d'innocents : l'image non marquée n'a été remise à personne ; toute accusation est un faux positif.
-            AttributionReport clean = service.analyze(imageId, FBlockReader.of(original, partitions), maskDigest,
-                    recipients, Optional.empty());
+            AttributionReport clean = service.analyze(imageId, FBlockReader.of(original, partitions, registryBits),
+                    maskDigest, recipients, Optional.empty());
             result.unmarkedAnalyses++;
             if (!clean.accused().isEmpty()) result.unmarkedAccusations++;
         }
@@ -244,17 +289,20 @@ public final class AttackBench {
 
     // --- Attaques ------------------------------------------------------------------------------------------------
 
-    /** JPEG qualité 0,75 : fenêtre fixe [0, maxValue] → 8 bits, compression, décompression, retour à l'échelle. */
-    static char[] jpeg(PixelImage img) {
+    /**
+     * JPEG qualité 0,75 : fenêtre fixe {@code [0, maxValue]} → 8 bits (une valeur hors fenêtre d'une copie signée est
+     * rendue au bord de la fenêtre, comme dans un visualiseur), compression, décompression, retour à l'échelle.
+     */
+    static int[] jpeg(PixelImage img) {
         int rows = img.rows();
         int cols = img.cols();
         int max = img.maxValue();
-        char[] px = img.pixels();
         BufferedImage gray = new BufferedImage(cols, rows, BufferedImage.TYPE_BYTE_GRAY);
         WritableRaster raster = gray.getRaster();
         for (int r = 0; r < rows; r++) {
             for (int c = 0; c < cols; c++) {
-                raster.setSample(c, r, 0, (int) Math.round(px[r * cols + c] * 255.0 / max));
+                int v = Math.max(0, Math.min(max, img.pixel(r * cols + c)));
+                raster.setSample(c, r, 0, (int) Math.round(v * 255.0 / max));
             }
         }
         try {
@@ -270,11 +318,11 @@ public final class AttackBench {
                 writer.dispose();
             }
             BufferedImage back = ImageIO.read(new ByteArrayInputStream(bytes.toByteArray()));
-            char[] out = new char[rows * cols];
+            int[] out = new int[rows * cols];
             for (int r = 0; r < rows; r++) {
                 for (int c = 0; c < cols; c++) {
                     int g = back.getRaster().getSample(c, r, 0);
-                    out[r * cols + c] = (char) Math.min(max, Math.round(g * (double) max / 255.0));
+                    out[r * cols + c] = (int) Math.min(max, Math.round(g * (double) max / 255.0));
                 }
             }
             return out;
@@ -283,15 +331,18 @@ public final class AttackBench {
         }
     }
 
-    /** Redimensionnement à 75 % puis retour à la taille d'origine, en bilinéaire, sur toute la profondeur. */
-    static char[] resize(PixelImage img) {
+    /**
+     * Redimensionnement à 75 % puis retour à la taille d'origine, en bilinéaire, sur toute la profondeur. Une copie
+     * signée est décalée de 32 768 pour tenir dans un raster non signé, puis ramenée.
+     */
+    static int[] resize(PixelImage img) {
         int rows = img.rows();
         int cols = img.cols();
-        char[] px = img.pixels();
+        int offset = img.signed() ? 32_768 : 0;
         BufferedImage src = new BufferedImage(cols, rows, BufferedImage.TYPE_USHORT_GRAY);
         WritableRaster sr = src.getRaster();
         for (int r = 0; r < rows; r++) {
-            for (int c = 0; c < cols; c++) sr.setSample(c, r, 0, px[r * cols + c]);
+            for (int c = 0; c < cols; c++) sr.setSample(c, r, 0, img.pixel(r * cols + c) + offset);
         }
         int smallCols = (int) Math.round(cols * RESIZE_FACTOR);
         int smallRows = (int) Math.round(rows * RESIZE_FACTOR);
@@ -301,28 +352,48 @@ public final class AttackBench {
         WritableRaster back = sr.createCompatibleWritableRaster(cols, rows);
         new AffineTransformOp(AffineTransform.getScaleInstance((double) cols / smallCols, (double) rows / smallRows),
                 AffineTransformOp.TYPE_BILINEAR).filter(small, back);
-        int max = img.maxValue();
-        char[] out = new char[rows * cols];
+        int max = img.signed() ? Short.MAX_VALUE : img.maxValue();
+        int[] out = new int[rows * cols];
         for (int r = 0; r < rows; r++) {
-            for (int c = 0; c < cols; c++) out[r * cols + c] = (char) Math.min(max, back.getSample(c, r, 0));
+            for (int c = 0; c < cols; c++) out[r * cols + c] = Math.min(max, back.getSample(c, r, 0) - offset);
         }
         return out;
     }
 
     // --- Outils --------------------------------------------------------------------------------------------------
 
-    static PixelImage withPixels(PixelImage like, char[] px) {
-        return new PixelImage(like.rows(), like.cols(), like.bitsStored(), like.photometric(), px,
+    /**
+     * Copie attaquée de mêmes attributs que {@code like} : non signée si toutes les valeurs tiennent dans
+     * {@code [0, maxValue]}, signée sinon (l'attaquant garde le domaine signé de la copie).
+     */
+    static PixelImage image(PixelImage like, int[] values) {
+        int max = like.maxValue();
+        boolean inRange = true;
+        for (int v : values) {
+            if (v < 0 || v > max) {
+                inRange = false;
+                break;
+            }
+        }
+        if (inRange) {
+            return PixelImage.fromInts(like.rows(), like.cols(), like.bitsStored(), like.photometric(), values,
+                    like.burnedInAnnotation(), like.overlayPresent());
+        }
+        short[] sv = new short[values.length];
+        for (int i = 0; i < sv.length; i++) sv[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, values[i]));
+        return PixelImage.signedFromShorts(like.rows(), like.cols(), like.bitsStored(), like.photometric(), sv,
                 like.burnedInAnnotation(), like.overlayPresent());
     }
 
-    static double psnr(char[] a, char[] b, int max) {
+    /** PSNR (dB) entre l'original et la copie, sur les valeurs décodées, avec {@code MAX = 2^B − 1} de l'original. */
+    static double psnr(PixelImage a, PixelImage b, int max) {
         double sum = 0;
-        for (int i = 0; i < a.length; i++) {
-            double d = a[i] - b[i];
+        int n = a.pixelCount();
+        for (int i = 0; i < n; i++) {
+            double d = a.pixel(i) - b.pixel(i);
             sum += d * d;
         }
-        return sum == 0 ? Double.POSITIVE_INFINITY : 10 * Math.log10((double) max * max / (sum / a.length));
+        return sum == 0 ? Double.POSITIVE_INFINITY : 10 * Math.log10((double) max * max / (sum / n));
     }
 
     static byte[] id(long seed) {
@@ -341,13 +412,15 @@ public final class AttackBench {
         sb.append(String.format(Locale.ROOT, "Copies demandées par fantôme : %d ; destinataires candidats : %d ; "
                 + "JPEG qualité %.2f ; redimensionnement %.0f %% puis retour, bilinéaire.%n%n",
                 copies, RECIPIENTS, JPEG_QUALITY, RESIZE_FACTOR * 100));
-        sb.append("Critères d'acceptation : récupération ≥ 95 % (avertissement), faux positifs ≤ 1 % (bloquant), ")
-                .append("PSNR ≥ 40 dB (bloquant).\n\n");
-        sb.append("## Marquage\n\n| Fantôme | Copies marquées | Refusées | Motifs de refus | PSNR moyen | PSNR minimal |\n")
-                .append("|---|---|---|---|---|---|\n");
+        sb.append("Critères d'acceptation : vrai destinataire accusé dans toutes les copies de chaque scénario ")
+                .append("(bloquant), faux positifs ≤ 1 % (bloquant), PSNR ≥ 40 dB (bloquant), récupération des bits F ")
+                .append("≥ 95 % (avertissement).\n\n");
+        sb.append("## Marquage\n\n| Fantôme | Δ(B) | Copies marquées | dont signées | Refusées | Motifs de refus | ")
+                .append("PSNR moyen | PSNR minimal |\n|---|---|---|---|---|---|---|---|\n");
         for (PhantomResult r : results) {
-            sb.append(String.format(Locale.ROOT, "| %s | %d | %d | %s | %.2f dB | %.2f dB |%n", r.name, r.marked,
-                    r.refused, r.refusals.isEmpty() ? "—" : String.join(", ", r.refusals), r.psnrMean(),
+            sb.append(String.format(Locale.ROOT, "| %s | %d | %d | %d | %d | %s | %.2f dB | %.2f dB |%n", r.name,
+                    r.qimDelta, r.marked, r.signedCopies, r.refused,
+                    r.refusals.isEmpty() ? "—" : String.join(", ", r.refusals), r.psnrMean(),
                     r.marked == 0 ? 0.0 : r.psnrMin));
         }
         sb.append("\n## Attaques\n\n| Fantôme | Scénario | Bits F relus | Vrai destinataire accusé | ")
@@ -355,6 +428,7 @@ public final class AttackBench {
         for (PhantomResult r : results) {
             for (Scenario s : r.scenarios.values()) {
                 String status = s.falsePositiveRate() > MAX_FALSE_POSITIVE_RATE ? "ÉCHEC (faux positifs)"
+                        : s.attribution() < MIN_ATTRIBUTION ? "ÉCHEC (attribution)"
                         : s.recovery() < MIN_RECOVERY ? "avertissement (récupération < 95 %)" : "OK";
                 sb.append(String.format(Locale.ROOT, "| %s | %s | %s | %d / %d (%s) | %s | %s |%n", r.name, s.name,
                         pct(s.recovery()), s.trueAccused, s.analyses, pct(s.attribution()),
@@ -369,17 +443,38 @@ public final class AttackBench {
         }
         sb.append("\n## Critère de mesure\n\n")
                 .append("La récupération est mesurée de deux façons (taux de bits F relus, attribution du vrai ")
-                .append("destinataire) et sur deux profondeurs (8 et 12 bits). Critère bloquant : PSNR ≥ 40 dB et faux ")
-                .append("positifs ≤ 1 %. Une récupération des bits sous 95 % produit un avertissement ; elle est suivie ")
-                .append("comme une dette technique (pas QIM proportionnel à la profondeur, prévu).\n")
-                .append("\n## Cause de l'échec en 12 bits\n\n")
-                .append("**Pas QIM fixe Δ = 12 quelle que soit la profondeur** (`EmbeddingProfile.QIM_DELTA`, en valeurs ")
-                .append("stockées). En 12 bits (4096 niveaux), ce pas est trop petit pour la dynamique de l'image : le ")
-                .append("passage en 8 bits imposé par JPEG le ramène à moins d'un niveau de gris, et l'interpolation du ")
-                .append("redimensionnement déplace les coefficients de bien plus que Δ/4. F est effacé (≈ 50 % des bits, ")
-                .append("le hasard), sans fausse accusation.\n\n")
-                .append("**Correction prévue au prompt 09 : Δ proportionnel à la profondeur.** D'ici là, une ")
-                .append("récupération sous 95 % reste un avertissement.\n");
+                .append("destinataire) et sur deux profondeurs (8 et 12 bits). Critères bloquants : le vrai destinataire ")
+                .append("est accusé dans toutes les copies de chaque scénario (sans attaque, JPEG Q75, redimensionnement ")
+                .append("à 75 %), faux positifs ≤ 1 %, PSNR ≥ 40 dB. Une récupération des bits F sous 95 % produit un ")
+                .append("avertissement, non bloquant : le code de Tardos tolère une part de bits erronés, et c'est ")
+                .append("l'attribution qui décide.\n");
+        sb.append(correctionApplied(results));
+        return sb.toString();
+    }
+
+    /** Section « Correction appliquée » : Δ(B) et les chiffres 12 bits de ce passage. */
+    static String correctionApplied(List<PhantomResult> results) {
+        StringBuilder sb = new StringBuilder("\n## Correction appliquée\n\n");
+        sb.append("**Pas QIM proportionnel à la profondeur : Δ(B) = 12 × 2^(B − 8)** (`EmbeddingProfile.qimDelta`), ")
+                .append("soit Δ(8) = 12 et Δ(12) = 192. Avec le pas fixe Δ = 12, une image 12 bits perdait F sous ")
+                .append("JPEG Q75 (le passage en 8 bits ramenait le pas à moins d'un niveau de gris) et sous le ")
+                .append("redimensionnement à 75 % (écart d'interpolation bien supérieur à Δ/4) : environ 50 % des bits ")
+                .append("relus, aucune attribution. Avec Δ(B), le pas relatif à la dynamique est le même qu'en 8 bits. ")
+                .append("La profondeur B est enregistrée à l'émission (`EmbeddingResult.bitsStored()`) et redonnée à ")
+                .append("l'extraction, comme le fera le registre : Δ n'est jamais lu dans la copie analysée.\n");
+        for (PhantomResult r : results) {
+            if (!r.name.startsWith("12 bits")) continue;
+            Scenario jpeg = r.scenarios.get("JPEG Q75");
+            Scenario resize = r.scenarios.get("redimensionnement 75 %");
+            sb.append(String.format(Locale.ROOT, "%nMesures de ce passage, %s. ", r.name));
+            sb.append(String.format(Locale.ROOT,
+                    "JPEG Q75 : %s des bits F relus, vrai destinataire accusé %d / %d ; redimensionnement 75 %% : %s des "
+                            + "bits, vrai destinataire accusé %d / %d ; faux positifs %s et %s ; copies en mode signé : "
+                            + "%d / %d ; PSNR minimal %.2f dB.%n",
+                    pct(jpeg.recovery()), jpeg.trueAccused, jpeg.analyses, pct(resize.recovery()), resize.trueAccused,
+                    resize.analyses, pct(jpeg.falsePositiveRate()), pct(resize.falsePositiveRate()), r.signedCopies,
+                    r.marked, r.marked == 0 ? 0.0 : r.psnrMin));
+        }
         return sb.toString();
     }
 

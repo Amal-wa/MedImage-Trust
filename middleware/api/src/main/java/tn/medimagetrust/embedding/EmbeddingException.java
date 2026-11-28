@@ -31,6 +31,17 @@ public final class EmbeddingException extends RuntimeException {
         INVALID_INPUT("entrée invalide"),
         /** L'insertion F écarterait un pixel de plus que l'écart autorisé. */
         F_DEVIATION_EXCEEDED("insertion F refusée : écart par pixel dépassé"),
+        /**
+         * La couche F ferait sortir une valeur de la plage stockable et aucune représentation sans écrêtage n'est
+         * possible : profondeur de seize bits (pas de mode signé), mode signé non autorisé, ou valeur hors de la plage
+         * d'un entier signé de seize bits. Jamais d'écrêtage silencieux.
+         */
+        EMBEDDING_RANGE_UNSUPPORTED("image non marquable : la couche F sortirait de la plage stockable"),
+        /**
+         * L'original déclare une valeur de remplissage ({@code PixelPaddingValue}) présente dans le fond : les blocs
+         * qui en contiennent sont exclus de la RONI, et le reste ne suffit pas à la capacité.
+         */
+        PIXEL_PADDING_IN_RONI("image non marquable : pixels de remplissage nécessaires à la capacité"),
         /** Le contrôle final de la copie marquée a échoué ; voir {@link #finalCheck()}. */
         FINAL_CHECK_FAILED("copie annulée : contrôle final en échec"),
         /** Opération interdite dans l'état courant de la session. */
@@ -48,6 +59,11 @@ public final class EmbeddingException extends RuntimeException {
     public enum FinalCheck {
         /** Un pixel hors RONI diffère de l'original. */
         ROI_MODIFIED("pixel hors RONI modifié"),
+        /**
+         * Une valeur sort de la plage stockable de l'original hors de la RONI, ou dans une copie non signée : seule la
+         * RONI d'une copie en mode signé peut contenir des valeurs négatives ou supérieures au maximum.
+         */
+        RANGE_OUTSIDE_RONI("valeur hors plage en dehors de la RONI"),
         /** Un bloc de la classe F non utilisé a été modifié. */
         UNUSED_BLOCK_MODIFIED("bloc non utilisé modifié"),
         /** Écart par pixel au-delà de la borne de sa partition. */

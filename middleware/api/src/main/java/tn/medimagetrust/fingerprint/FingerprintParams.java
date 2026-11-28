@@ -23,8 +23,8 @@ public final class FingerprintParams {
     public static final int USED_BLOCKS = EmbeddingProfile.F_USED_BLOCKS;
     /** Taille minimale de la classe F, en blocs : marge × 2 sur les blocs utilisés (§4.1). */
     public static final int MIN_F_CLASS_BLOCKS = EmbeddingProfile.MIN_F_CLASS_BLOCKS;
-    /** Pas Δ de la QIM : les dithers sont tirés dans {@code [0, Δ)}. */
-    public static final double QIM_DELTA = EmbeddingProfile.QIM_DELTA;
+    // Pas Δ de la QIM : pas de constante ici. Il dépend de la profondeur effective B de l'émission et vient du canal F
+    // (FBlockChannel.qimDelta()) : session à l'émission, registre à l'analyse.
     /** Nombre de colluders face auxquels le code est dimensionné. */
     public static final int MAX_COLLUDERS = 2;
     /** Destinataires maximum par image. */

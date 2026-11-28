@@ -94,10 +94,10 @@ class MeasurementsTest {
     }
 
     @Test
-    @DisplayName("Robustesse F au bruit gaussien : σ = 1 ; 1,5 ; 2")
+    @DisplayName("Robustesse F au bruit gaussien : σ = 1 ; 1,5 ; 2 (× 2^(B − 8), bruit relatif au pas)")
     void noiseRates() {
         for (double sigma : new double[] {1.0, 1.5, 2.0}) {
-            print("bruit gaussien sigma = %.1f : bits F relus = %.2f %%", sigma,
+            print("bruit gaussien sigma = %.1f x 2^(B - 8) : bits F relus = %.2f %%", sigma,
                     100 * DctQimTest.readRateUnderNoise(sigma));
         }
     }
