@@ -13,14 +13,17 @@
 
   <artifactId>medimage-api</artifactId>
   <packaging>war</packaging>
-  <name>MedImage-Trust :: api (crypto, embedding, fingerprint, watermark, audit, REST)</name>
+  <name>MedImage-Trust :: api (crypto, embedding, dicom, stego, fingerprint, watermark, audit, REST)</name>
 
   <properties>
     <!-- Nom du WAR attendu par le script add-api.cli : ${api.name}-${api.version}.war -->
     <api.name>api</api.name>
     <api.version>1.0</api.version>
-    <!-- Le test de budget mémoire (36 Mpx, tag « memory ») est exclu de mvn -B test par défaut. -->
-    <api.excludedGroups>memory</api.excludedGroups>
+    <!--
+      Exclus de mvn -B test par défaut : le budget mémoire (36 Mpx, tag « memory ») et les tests sur le corpus réel
+      (tag « corpus », fichiers hors du dépôt, dossier MEDIMAGE_CORPUS_DIR).
+    -->
+    <api.excludedGroups>memory,corpus</api.excludedGroups>
   </properties>
 
   <!--
@@ -37,6 +40,15 @@
     <dependency>
       <groupId>jakarta.platform</groupId>
       <artifactId>jakarta.jakartaee-api</artifactId>
+    </dependency>
+    <!-- Lecture et écriture DICOM : réservées au package dicom (règle ArchUnit). -->
+    <dependency>
+      <groupId>org.dcm4che</groupId>
+      <artifactId>dcm4che-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
@@ -91,6 +103,8 @@
               <mainClass>tn.medimagetrust.bench.AttackBench</mainClass>
               <arguments>
                 <argument>${project.build.directory}/bench</argument>
+                <!-- Manifeste du corpus réel (section « Corpus réel », lue si MEDIMAGE_CORPUS_DIR est défini). -->
+                <argument>${project.basedir}/../../docs/CORPUS.md</argument>
               </arguments>
             </configuration>
           </execution>

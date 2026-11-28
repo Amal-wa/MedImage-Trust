@@ -25,10 +25,55 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <junit.version>5.11.4</junit.version>
     <archunit.version>1.5.1</archunit.version>
+    <!--
+      dcm4che : 5.35.2, dernière version résolvable du dépôt officiel au 28/11/2026. La 5.36.0 y est publiée, mais
+      son POM parent (dcm4che-parent 5.36.0) est absent du dépôt (404) : Maven ne peut pas la résoudre.
+    -->
+    <dcm4che.version>5.35.2</dcm4che.version>
+    <!-- Version imposée par dcm4che-parent 5.35.2 ; fournie par WildFly à l'exécution (module org.slf4j). -->
+    <slf4j.version>2.0.18</slf4j.version>
   </properties>
+
+  <!--
+    dcm4che n'est pas publié sur Maven Central : dépôt officiel en HTTPS, versions publiées seulement. Ce dépôt ne
+    peut servir que le groupe org.dcm4che (filtre du resolver : .mvn/maven.config et .mvn/rrf/groupId-dcm4che.txt) ;
+    sommes de contrôle strictes comme pour Central (option strict-checksums de maven.config, checksumPolicy fail).
+  -->
+  <repositories>
+    <repository>
+      <id>dcm4che</id>
+      <name>dcm4che (dépôt officiel)</name>
+      <url>https://www.dcm4che.org/maven2/</url>
+      <releases>
+        <enabled>true</enabled>
+        <checksumPolicy>fail</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
 
   <dependencyManagement>
     <dependencies>
+      <dependency>
+        <groupId>org.dcm4che</groupId>
+        <artifactId>dcm4che-core</artifactId>
+        <version>${dcm4che.version}</version>
+        <exclusions>
+          <!-- slf4j-api est fourni par WildFly : déclaré à part, en provided, pour ne pas l'embarquer dans le WAR. -->
+          <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+        <scope>provided</scope>
+      </dependency>
       <dependency>
         <groupId>tn.medimage</groupId>
         <artifactId>medimage-core</artifactId>
